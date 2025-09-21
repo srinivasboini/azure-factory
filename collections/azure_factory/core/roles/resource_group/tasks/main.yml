@@ -1,0 +1,28 @@
+---
+# Resource Group Role Tasks
+# This role creates and manages Azure Resource Groups using Azure CLI commands
+
+- name: Check if resource group exists
+  command: az group show --name "{{ resource_group_name }}"
+  register: rg_check
+  failed_when: false
+  changed_when: false
+
+- name: Create resource group if it doesn't exist
+  command: az group create --name "{{ resource_group_name }}" --location "{{ resource_group_location }}" --tags "Project={{ project_name }}" "Environment={{ env_name }}" "ManagedBy=Ansible"
+  when: rg_check.rc != 0
+  register: rg_result
+
+- name: Set resource group facts
+  set_fact:
+    resource_group_exists: "{{ rg_check.rc == 0 }}"
+    resource_group_id: "{{ (rg_result.stdout | from_json).id if rg_result is defined and rg_result.changed else (rg_check.stdout | from_json).id if rg_check.rc == 0 else '' }}"
+
+- name: Display resource group information
+  debug:
+    msg:
+      - "Resource Group: {{ resource_group_name }}"
+      - "Location: {{ resource_group_location }}"
+      - "Exists: {{ resource_group_exists }}"
+      - "ID: {{ resource_group_id }}"
+  when: display_rg_info | default(true)

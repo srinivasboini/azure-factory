@@ -1,0 +1,91 @@
+---
+# Azure Web App Destroy Playbook
+# This playbook destroys only the Web App resources
+# Use this to clean up webapp after testing (infrastructure should be destroyed separately)
+
+- name: Destroy Azure Web App Resources
+  hosts: azure_dev
+  connection: local
+  gather_facts: false
+  
+  vars: {}
+  
+  pre_tasks:
+    - name: Display webapp destruction information
+      debug:
+        msg:
+          - "🗑️ Starting Azure Web App Resources Destruction"
+          - "Resource Group: {{ resource_group_name }}"
+          - "Web App: {{ webapp_name }}"
+          - ""
+          - "⚠️ WARNING: This will permanently delete the Web App!"
+          - "Press Ctrl+C to cancel, or wait 5 seconds to continue..."
+    
+    - name: Wait for confirmation
+      pause:
+        seconds: 5
+    
+    - name: Check if Azure CLI is logged in
+      command: az account show
+      register: azure_login_check
+      failed_when: false
+      changed_when: false
+    
+    - name: Fail if not logged in to Azure CLI
+      fail:
+        msg: "Not logged in to Azure CLI. Please run 'az login' first."
+      when: azure_login_check.rc != 0
+  
+  tasks:
+    # Step 1: Delete Web App
+    - name: Check if Web App exists
+      command: az webapp show --resource-group "{{ resource_group_name }}" --name "{{ webapp_name }}"
+      register: webapp_check
+      failed_when: false
+      changed_when: false
+    
+    - name: Delete Web App
+      command: az resource delete --resource-group "{{ resource_group_name }}" --name "{{ webapp_name }}" --resource-type "Microsoft.Web/sites"
+      register: webapp_delete_result
+      failed_when: false
+    
+    - name: Display Web App deletion status
+      debug:
+        msg: "Web App '{{ webapp_name }}': {{ 'Deleted' if webapp_check.rc == 0 else 'Not found' }}"
+    
+    # Step 2: Delete User Assigned Managed Identity
+    - name: Check if User Assigned Managed Identity exists
+      command: az identity show --resource-group "{{ resource_group_name }}" --name "{{ user_assigned_identity_name }}"
+      register: uami_check
+      failed_when: false
+      changed_when: false
+      when: enable_user_assigned_identity | default(false)
+    
+    - name: Delete User Assigned Managed Identity
+      command: az identity delete --resource-group "{{ resource_group_name }}" --name "{{ user_assigned_identity_name }}"
+      when: 
+        - enable_user_assigned_identity | default(false)
+        - uami_check.rc == 0
+      register: uami_delete_result
+    
+    - name: Display UAMI deletion status
+      debug:
+        msg: "UAMI '{{ user_assigned_identity_name }}': {{ 'Deleted' if uami_check.rc == 0 else 'Not found' }}"
+      when: enable_user_assigned_identity | default(false)
+    
+    # Step 3: Verify cleanup
+    - name: Check if Web App still exists
+      command: az webapp show --resource-group "{{ resource_group_name }}" --name "{{ webapp_name }}"
+      register: webapp_final_check
+      failed_when: false
+      changed_when: false
+    
+    - name: Display final webapp cleanup status
+      debug:
+        msg:
+          - "🎉 Web App Destruction Completed!"
+          - "Web App: {{ webapp_name }}"
+          - "Status: {{ 'Deleted' if webapp_final_check.rc != 0 else 'Still exists' }}"
+          - ""
+          - "Web App resources have been cleaned up!"
+          - "Next: Run 'ansible-playbook -i inventories/dev playbooks/destroy_infrastructure.yml' to clean up infrastructure resources"

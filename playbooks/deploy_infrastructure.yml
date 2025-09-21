@@ -1,0 +1,178 @@
+---
+# Azure Infrastructure Setup Playbook
+# This playbook creates the infrastructure components (VNet, App Service Plan) only
+# Run this first before deploying the webapp
+
+- name: Deploy Azure Infrastructure Components
+  hosts: azure_dev
+  connection: local
+  gather_facts: false
+  
+  pre_tasks:
+    - name: Display infrastructure deployment information
+      debug:
+        msg:
+          - "🏗️ Starting Azure Infrastructure Deployment"
+          - "Project: {{ project_name }}"
+          - "Environment: {{ env_name }}"
+          - "Resource Group: {{ resource_group_name }}"
+          - "Location: {{ resource_group_location }}"
+          - "VNet: {{ vnet_name }}"
+          - "App Service Plan: {{ app_service_plan_name }}"
+          - "SKU: {{ sku_name }} ({{ sku_tier }})"
+          - "User Assigned Identity: {{ 'Enabled' if enable_user_assigned_identity | default(false) else 'Disabled' }}"
+          - "UAMI Name: {{ user_assigned_identity_name | default('N/A') if enable_user_assigned_identity | default(false) else 'N/A' }}"
+    
+    - name: Validate required environment variables
+      fail:
+        msg: "{{ item }} environment variable is required"
+      when: 
+        - lookup('env', item) is not defined or lookup('env', item) == ""
+        - validate_env_vars | default(true)
+      loop:
+        - AZURE_SUBSCRIPTION_ID
+        - AZURE_TENANT_ID
+  
+  tasks:
+    # Step 1: Azure Authentication
+    - name: Azure Authentication
+      include_role:
+        name: azure_auth
+      vars:
+        project_name: "{{ project_name }}"
+        environment: "{{ env_name }}"
+        azure_subscription_id: "{{ lookup('env', 'AZURE_SUBSCRIPTION_ID') | default('') }}"
+        azure_tenant_id: "{{ lookup('env', 'AZURE_TENANT_ID') | default('') }}"
+        azure_auth_method: "{{ lookup('env', 'AZURE_AUTH_METHOD') | default('cli') }}"
+        validate_auth: true
+    
+    # Step 2: Register Required Azure Providers
+    - name: Register Microsoft.Web provider
+      command: az provider register --namespace Microsoft.Web
+      register: web_provider_registration
+      failed_when: false
+      changed_when: web_provider_registration.rc == 0
+    
+    - name: Wait for Microsoft.Web provider registration
+      command: az provider show --namespace Microsoft.Web --query "registrationState" -o tsv
+      register: web_provider_status
+      until: web_provider_status.stdout == "Registered"
+      retries: 30
+      delay: 10
+      when: web_provider_registration.rc == 0
+    
+    - name: Display provider registration status
+      debug:
+        msg: "Microsoft.Web provider registration: {{ web_provider_status.stdout | default('Already registered') }}"
+  
+  roles:
+    
+    # Step 3: Create Resource Group
+    - role: resource_group
+      vars:
+        display_rg_info: true
+    
+    # Step 4: Create VNet with delegated and non-delegated subnets
+    - role: vnet_complete
+      vars:
+        nsg_name: "{{ project_name }}-{{ env_name }}-nsg"
+        subnets:
+          # Delegated subnet for App Service Plan
+          - name: "{{ delegated_subnet_name }}"
+            address_prefix: "{{ delegated_subnet_prefix }}"
+            service_endpoints: ["Microsoft.Web"]
+            delegation:
+              name: "Microsoft.Web.serverFarms"
+              service_name: "Microsoft.Web/serverFarms"
+          # Non-delegated subnet for Private Endpoint (future use)
+          - name: "{{ non_delegated_subnet_name }}"
+            address_prefix: "{{ non_delegated_subnet_prefix }}"
+            service_endpoints: []
+          # Frontend subnet for web applications
+          - name: "frontend"
+            address_prefix: "10.0.3.0/24"
+            service_endpoints: []
+          # Backend subnet for API services
+          - name: "backend"
+            address_prefix: "10.0.4.0/24"
+            service_endpoints: []
+          # Database subnet for database services
+          - name: "database"
+            address_prefix: "10.0.5.0/24"
+            service_endpoints: ["Microsoft.Sql", "Microsoft.Storage"]
+        nsg_rules:
+          - name: "AllowHTTPS"
+            priority: 1000
+            direction: "Inbound"
+            access: "Allow"
+            protocol: "Tcp"
+            source_port_range: "*"
+            destination_port_range: "443"
+            source_address_prefix: "*"
+            destination_address_prefix: "*"
+          - name: "AllowHTTP"
+            priority: 1100
+            direction: "Inbound"
+            access: "Allow"
+            protocol: "Tcp"
+            source_port_range: "*"
+            destination_port_range: "80"
+            source_address_prefix: "*"
+            destination_address_prefix: "*"
+        display_vnet_info: true
+    
+    # Step 5: Create App Service Plan
+    - role: app_service_plan
+      vars:
+        display_asp_info: true
+  
+  post_tasks:
+    - name: Display infrastructure deployment summary
+      debug:
+        msg:
+          - "🎉 Infrastructure Deployment Completed Successfully!"
+          - "Resource Group: {{ resource_group_name }}"
+          - "VNet: {{ vnet_name }}"
+          - "Delegated Subnet: {{ delegated_subnet_name }} (10.0.1.0/24)"
+          - "Private Subnet: {{ non_delegated_subnet_name }} (10.0.2.0/24)"
+          - "App Service Plan: {{ app_service_plan_name }}"
+          - "SKU: {{ sku_name }} ({{ sku_tier }})"
+          - "Azure Account: {{ azure_account.name }}"
+          - "Subscription: {{ azure_account.subscription_id }}"
+          - ""
+          - "Next Step: Run the webapp deployment playbook"
+          - "Command: ansible-playbook -i inventories/dev playbooks/deploy_webapp_only.yml"
+    
+    - name: Save infrastructure information to file
+      copy:
+        content: |
+          # Azure Infrastructure Deployment Summary
+          Project: {{ project_name }}
+          Environment: {{ env_name }}
+          Deployment Date: {{ ansible_date_time.iso8601 }}
+          
+          ## Infrastructure Created
+          Resource Group: {{ resource_group_name }}
+          VNet: {{ vnet_name }}
+          App Service Plan: {{ app_service_plan_name }}
+          SKU: {{ sku_name }} ({{ sku_tier }})
+          
+          ## Network Configuration
+          VNet Address Space: 10.0.0.0/16
+          Delegated Subnet: {{ delegated_subnet_name }} (10.0.1.0/24)
+          Private Subnet: {{ non_delegated_subnet_name }} (10.0.2.0/24)
+          Frontend Subnet: frontend (10.0.3.0/24)
+          Backend Subnet: backend (10.0.4.0/24)
+          Database Subnet: database (10.0.5.0/24)
+          
+          ## Azure Account Information
+          Azure Account: {{ azure_account.name }}
+          Subscription: {{ azure_account.subscription_id }}
+          
+          ## Next Steps
+          1. Deploy Web App: ansible-playbook -i inventories/dev playbooks/deploy_webapp_only.yml
+          2. Test Application: https://myapp-dev-webapp.azurewebsites.net
+          3. Cleanup Resources: ansible-playbook -i inventories/dev playbooks/destroy_webapp.yml
+        dest: "./infrastructure-summary-{{ project_name }}-{{ env_name }}.txt"
+      delegate_to: localhost
+      when: save_infrastructure_info | default(false)

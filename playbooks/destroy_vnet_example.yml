@@ -1,0 +1,74 @@
+---
+# Azure VNet Destruction Playbook using Roles
+# This playbook demonstrates how to destroy a VNet using only roles
+
+- name: Destroy Azure VNet with Subnets and NSG using Roles
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  
+  vars:
+    # Project configuration
+    project_name: "myapp"
+    env_name: "dev"
+    
+    # Optional: Delete entire resource group
+    delete_resource_group: false
+  
+  pre_tasks:
+    - name: Display VNet destruction information
+      debug:
+        msg:
+        - "Destroying VNet: myapp-dev-vnet"
+        - "Resource Group: myapp-dev-rg"
+        - "NSG: myapp-dev-nsg"
+        - "Delete Resource Group: True"
+        - "Delete NetworkWatcher: False"
+    
+    - name: Validate required environment variables (optional)
+      fail:
+        msg: "{{ item }} environment variable is required for validation"
+      when:
+        - lookup('env', item) is not defined or lookup('env', item) == ""
+        - validate_env_vars | default(false)
+      loop:
+        - AZURE_SUBSCRIPTION_ID
+        - AZURE_TENANT_ID
+  
+  roles:
+    - role: azure_auth
+      vars:
+        project_name: "myapp"
+        environment: "dev"
+        azure_subscription_id: "{{ lookup('env', 'AZURE_SUBSCRIPTION_ID') | default('') }}"
+        azure_tenant_id: "{{ lookup('env', 'AZURE_TENANT_ID') | default('') }}"
+        azure_auth_method: "cli"
+        validate_auth: true
+    
+    - role: vnet_destroy
+      vars:
+        project_name: "myapp"
+        env_name: "dev"
+        resource_group_name: "myapp-dev-rg"
+        vnet_name: "myapp-dev-vnet"
+        nsg_name: "myapp-dev-nsg"
+        delete_resource_group: true
+        delete_network_watcher: false
+        resource_group_location: "eastus"
+        display_destruction_info: true
+  
+  post_tasks:
+    - name: Save destruction information to file
+      copy:
+        content: |
+          # Azure VNet Destruction Summary
+          Project: {{ project_name }}
+          Environment: {{ env_name }}
+          Destruction Date: {{ ansible_date_time.iso8601 }}
+          Resource Group: {{ project_name }}-{{ env_name }}-rg
+          VNet Name: {{ project_name }}-{{ env_name }}-vnet
+          NSG Name: {{ project_name }}-{{ env_name }}-nsg
+          Resource Group Deleted: {{ delete_resource_group }}
+        dest: "./vnet-destruction-{{ project_name }}-{{ env_name }}.txt"
+      delegate_to: localhost
+      when: save_destruction_info | default(false)

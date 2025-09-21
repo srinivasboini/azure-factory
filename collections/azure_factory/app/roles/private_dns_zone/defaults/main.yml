@@ -1,0 +1,16 @@
+---
+# Private DNS Zone Role - Default Variables
+# Default values for Private DNS Zone configuration
+
+# Private DNS Zone Configuration
+dns_zone_name: "privatelink.azurewebsites.net"  # Standard zone for Web App private endpoints
+
+# Tags
+dns_zone_tags:
+  Project: "{{ project_name }}"
+  Environment: "{{ env_name }}"
+  ManagedBy: "Ansible"
+  ResourceType: "PrivateDNSZone"
+
+# Display settings
+display_dns_info: true

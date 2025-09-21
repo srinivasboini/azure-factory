@@ -1,0 +1,80 @@
+---
+# Azure Authentication Role Tasks
+# This role handles Azure authentication and basic setup using Azure CLI commands
+
+- name: Validate required variables (only if provided)
+  fail:
+    msg: "{{ item }} is required but not defined"
+  when: 
+    - item is not defined or item == ""
+    - validate_required_vars | default(false)
+  loop:
+    - project_name
+    - environment
+
+- name: Validate authentication method
+  fail:
+    msg: "azure_auth_method must be one of: cli, service_principal, msi"
+  when: azure_auth_method not in ['cli', 'service_principal', 'msi']
+
+- name: Validate service principal credentials when using service_principal auth
+  fail:
+    msg: "azure_client_id and azure_secret are required when using service_principal authentication"
+  when: 
+    - azure_auth_method == 'service_principal'
+    - (azure_client_id is not defined or azure_client_id == "" or azure_secret is not defined or azure_secret == "")
+
+- name: Set Azure authentication facts
+  set_fact:
+    azure_auth:
+      subscription_id: "{{ azure_subscription_id }}"
+      tenant_id: "{{ azure_tenant_id }}"
+      auth_method: "{{ azure_auth_method }}"
+      client_id: "{{ azure_client_id | default('') }}"
+      secret: "{{ azure_secret | default('') }}"
+
+- name: Check if Azure CLI is installed
+  command: az --version
+  register: az_cli_check
+  failed_when: false
+  changed_when: false
+
+- name: Fail if Azure CLI is not installed
+  fail:
+    msg: "Azure CLI is not installed. Please install it from https://docs.microsoft.com/en-us/cli/azure/install-azure-cli"
+  when: az_cli_check.rc != 0
+
+- name: Verify Azure CLI is logged in
+  command: az account show
+  register: az_login_check
+  changed_when: false
+  failed_when: false
+
+- name: Fail if not logged in to Azure CLI
+  fail:
+    msg: "Not logged in to Azure CLI. Please run 'az login' first."
+  when: az_login_check.rc != 0
+
+- name: Set Azure subscription (if provided)
+  command: az account set --subscription {{ azure_subscription_id }}
+  register: az_subscription_result
+  changed_when: false
+  when: azure_subscription_id is defined and azure_subscription_id != ""
+
+- name: Set Azure account facts
+  set_fact:
+    azure_account:
+      subscription_id: "{{ (az_login_check.stdout | from_json).id }}"
+      tenant_id: "{{ (az_login_check.stdout | from_json).tenantId }}"
+      name: "{{ (az_login_check.stdout | from_json).name }}"
+      user: "{{ (az_login_check.stdout | from_json).user.name }}"
+
+- name: Display authentication summary
+  debug:
+    msg:
+      - "Azure Authentication Method: {{ azure_auth_method }}"
+      - "Subscription ID: {{ azure_subscription_id }}"
+      - "Tenant ID: {{ azure_tenant_id }}"
+      - "Account Name: {{ azure_account.name }}"
+      - "User: {{ azure_account.user }}"
+  when: validate_auth

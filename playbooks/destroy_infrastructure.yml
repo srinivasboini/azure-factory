@@ -1,0 +1,124 @@
+---
+# Azure Infrastructure Destroy Playbook
+# This playbook destroys only the infrastructure resources (VNet, NSG, App Service Plan)
+# Use this to clean up infrastructure after testing
+
+- name: Destroy Azure Infrastructure Resources
+  hosts: azure_dev
+  connection: local
+  gather_facts: false
+  
+  vars: {}
+  
+  pre_tasks:
+    - name: Display infrastructure destruction information
+      debug:
+        msg:
+          - "🗑️ Starting Azure Infrastructure Resources Destruction"
+          - "Resource Group: {{ resource_group_name }}"
+          - "App Service Plan: {{ app_service_plan_name }}"
+          - "VNet: {{ vnet_name }}"
+          - "NSG: {{ nsg_name }}"
+          - ""
+          - "⚠️ WARNING: This will permanently delete infrastructure resources!"
+          - "Press Ctrl+C to cancel, or wait 5 seconds to continue..."
+    
+    - name: Wait for confirmation
+      pause:
+        seconds: 5
+    
+    - name: Check if Azure CLI is logged in
+      command: az account show
+      register: azure_login_check
+      failed_when: false
+      changed_when: false
+    
+    - name: Fail if not logged in to Azure CLI
+      fail:
+        msg: "Not logged in to Azure CLI. Please run 'az login' first."
+      when: azure_login_check.rc != 0
+  
+  tasks:
+    # Step 1: Delete App Service Plan
+    - name: Check if App Service Plan exists
+      command: az appservice plan show --resource-group "{{ resource_group_name }}" --name "{{ app_service_plan_name }}"
+      register: asp_check
+      failed_when: false
+      changed_when: false
+    
+    - name: Delete App Service Plan
+      command: az appservice plan delete --resource-group "{{ resource_group_name }}" --name "{{ app_service_plan_name }}" --yes
+      when: asp_check.rc == 0
+      register: asp_delete_result
+    
+    - name: Display App Service Plan deletion status
+      debug:
+        msg: "App Service Plan '{{ app_service_plan_name }}': {{ 'Deleted' if asp_check.rc == 0 else 'Not found' }}"
+    
+    # Step 2: Delete VNet and related resources
+    - name: Check if VNet exists
+      command: az network vnet show --resource-group "{{ resource_group_name }}" --name "{{ vnet_name }}"
+      register: vnet_check
+      failed_when: false
+      changed_when: false
+    
+    - name: Delete VNet
+      command: az network vnet delete --resource-group "{{ resource_group_name }}" --name "{{ vnet_name }}"
+      when: vnet_check.rc == 0
+      register: vnet_delete_result
+    
+    - name: Display VNet deletion status
+      debug:
+        msg: "VNet '{{ vnet_name }}': {{ 'Deleted' if vnet_check.rc == 0 else 'Not found' }}"
+    
+    # Step 3: Delete NSG
+    - name: Check if NSG exists
+      command: az network nsg show --resource-group "{{ resource_group_name }}" --name "{{ nsg_name }}"
+      register: nsg_check
+      failed_when: false
+      changed_when: false
+    
+    - name: Delete NSG
+      command: az network nsg delete --resource-group "{{ resource_group_name }}" --name "{{ nsg_name }}"
+      when: nsg_check.rc == 0
+      register: nsg_delete_result
+    
+    - name: Display NSG deletion status
+      debug:
+        msg: "NSG '{{ nsg_name }}': {{ 'Deleted' if nsg_check.rc == 0 else 'Not found' }}"
+    
+    # Step 4: Delete Resource Group (this will delete any remaining resources)
+    - name: Check if Resource Group exists
+      command: az group show --name "{{ resource_group_name }}"
+      register: rg_check
+      failed_when: false
+      changed_when: false
+    
+    - name: Delete Resource Group
+      command: az group delete --name "{{ resource_group_name }}" --yes --no-wait
+      when: rg_check.rc == 0
+      register: rg_delete_result
+    
+    - name: Display Resource Group deletion status
+      debug:
+        msg: "Resource Group '{{ resource_group_name }}': {{ 'Deleted' if rg_check.rc == 0 else 'Not found' }}"
+    
+    # Step 5: Verify cleanup
+    - name: Wait for Resource Group deletion to complete
+      command: az group show --name "{{ resource_group_name }}"
+      register: rg_final_check
+      failed_when: false
+      changed_when: false
+      when: rg_check.rc == 0
+      retries: 10
+      delay: 30
+    
+    - name: Display final infrastructure cleanup status
+      debug:
+        msg:
+          - "🎉 Infrastructure Destruction Completed!"
+          - "Resource Group: {{ resource_group_name }}"
+          - "Status: {{ 'Deleted' if rg_final_check is not defined or rg_final_check.rc != 0 else 'Still exists (deletion in progress)' }}"
+          - ""
+          - "All infrastructure resources have been cleaned up!"
+          - "Next: Run 'ansible-playbook -i inventories/dev playbooks/destroy_webapp_only.yml' to clean up webapp resources"

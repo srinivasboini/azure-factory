@@ -1,0 +1,84 @@
+---
+# VNet Role Tasks
+# This role creates and manages Azure Virtual Networks with subnets and NSGs using Azure CLI commands
+
+- name: Include validation tasks
+  include_tasks: validate.yml
+  when: validate_address_space or validate_subnets
+
+- name: Check if Virtual Network exists
+  command: az network vnet show --resource-group {{ resource_group_name }} --name {{ vnet_name }}
+  register: vnet_check
+  failed_when: false
+  changed_when: false
+
+- name: Create Virtual Network
+  command: az network vnet create --resource-group {{ resource_group_name }} --name {{ vnet_name }} --address-prefix {{ vnet_address_prefix }} --dns-servers {{ vnet_dns_servers | join(' ') if vnet_dns_servers is defined else '' }} --tags {{ common_tags | combine(vnet_tags) | to_json }}
+  when: 
+    - create_vnet
+    - vnet_check.rc != 0
+  register: vnet_result
+
+- name: Set VNet facts
+  set_fact:
+    vnet_id: "{{ vnet_result.stdout | from_json | json_query('newVNet.id') if vnet_result is defined and vnet_result.rc == 0 else vnet_check.stdout | from_json | json_query('id') }}"
+    vnet_name: "{{ vnet_name }}"
+
+- name: Check if Network Security Group exists
+  command: az network nsg show --resource-group {{ resource_group_name }} --name {{ nsg_name }}
+  register: nsg_check
+  failed_when: false
+  changed_when: false
+
+- name: Create Network Security Group
+  command: az network nsg create --resource-group {{ resource_group_name }} --name {{ nsg_name }} --tags {{ common_tags | to_json }}
+  when: 
+    - create_nsg
+    - nsg_check.rc != 0
+  register: nsg_result
+
+- name: Add NSG rules
+  command: az network nsg rule create --resource-group {{ resource_group_name }} --nsg-name {{ nsg_name }} --name {{ item.name }} --priority {{ item.priority }} --direction {{ item.direction }} --access {{ item.access }} --protocol {{ item.protocol }} --source-port-ranges {{ item.source_port_range }} --destination-port-ranges {{ item.destination_port_range }} --source-address-prefixes {{ item.source_address_prefix }} --destination-address-prefixes {{ item.destination_address_prefix }}
+  loop: "{{ nsg_rules }}"
+  when: create_nsg
+  register: nsg_rules_result
+
+- name: Set NSG facts
+  set_fact:
+    nsg_id: "{{ nsg_result.stdout | from_json | json_query('id') if nsg_result is defined and nsg_result.rc == 0 else nsg_check.stdout | from_json | json_query('id') }}"
+    nsg_name: "{{ nsg_name }}"
+
+- name: Check if subnets exist
+  command: az network vnet subnet show --resource-group {{ resource_group_name }} --vnet-name {{ vnet_name }} --name {{ item.name }}
+  loop: "{{ subnets }}"
+  register: subnet_check
+  failed_when: false
+  changed_when: false
+
+- name: Create subnets
+  command: az network vnet subnet create --resource-group {{ resource_group_name }} --vnet-name {{ vnet_name }} --name {{ item.name }} --address-prefix {{ item.address_prefix }} --service-endpoints {{ item.service_endpoints | join(' ') if item.service_endpoints is defined else '' }}
+  loop: "{{ subnets }}"
+  when: create_subnets
+  register: subnet_results
+
+- name: Associate NSG to subnets
+  command: az network vnet subnet update --resource-group {{ resource_group_name }} --vnet-name {{ vnet_name }} --name {{ item.name }} --network-security-group {{ nsg_name }}
+  loop: "{{ subnets }}"
+  when: associate_nsg_to_subnets and create_nsg
+  register: nsg_association_results
+
+- name: Create VNet peerings
+  command: az network vnet peering create --resource-group {{ resource_group_name }} --vnet-name {{ vnet_name }} --name {{ item.name }} --remote-vnet {{ item.remote_vnet_id }} --allow-vnet-access {{ item.allow_virtual_network_access | default(true) }} --allow-forwarded-traffic {{ item.allow_forwarded_traffic | default(false) }} --allow-gateway-transit {{ item.allow_gateway_transit | default(false) }} --use-remote-gateways {{ item.use_remote_gateways | default(false) }}
+  loop: "{{ peerings }}"
+  when: create_peerings
+  register: peering_results
+
+- name: Display VNet creation summary
+  debug:
+    msg:
+      - "VNet Name: {{ vnet_name }}"
+      - "VNet ID: {{ vnet_id }}"
+      - "Address Space: {{ vnet_address_prefix }}"
+      - "Subnets Created: {{ subnets | map(attribute='name') | list }}"
+      - "NSG Name: {{ nsg_name }}"
+      - "NSG ID: {{ nsg_id }}"

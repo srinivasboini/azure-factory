@@ -1,0 +1,82 @@
+---
+# Complete VNet Role Tasks
+# This role creates a complete VNet setup with subnets and NSG using Azure CLI commands
+
+- name: Check if Virtual Network exists
+  command: az network vnet show --resource-group {{ resource_group_name }} --name {{ vnet_name }}
+  register: vnet_check
+  failed_when: false
+  changed_when: false
+
+- name: Create Virtual Network
+  command: az network vnet create --resource-group {{ resource_group_name }} --name {{ vnet_name }} --address-prefix {{ vnet_address_prefix }} --tags "Project={{ project_name }}" "Environment={{ env_name }}" "ManagedBy=Ansible" "Type=VirtualNetwork"
+  when: vnet_check.rc != 0
+  register: vnet_result
+
+- name: Set VNet facts
+  set_fact:
+    vnet_exists: "{{ vnet_check.rc == 0 }}"
+    vnet_id: "{{ (vnet_result.stdout | from_json).newVNet.id if vnet_result is defined and vnet_result.changed else (vnet_check.stdout | from_json).id if vnet_check.rc == 0 else '' }}"
+
+- name: Check if Network Security Group exists
+  command: az network nsg show --resource-group {{ resource_group_name }} --name {{ nsg_name }}
+  register: nsg_check
+  failed_when: false
+  changed_when: false
+
+- name: Debug NSG check result
+  debug:
+    msg: "NSG check return code: {{ nsg_check.rc }}, NSG exists: {{ nsg_check.rc == 0 }}"
+
+- name: Create Network Security Group
+  command: az network nsg create --resource-group {{ resource_group_name }} --name {{ nsg_name }} --tags "Project={{ project_name }}" "Environment={{ env_name }}" "ManagedBy=Ansible" "Type=NetworkSecurityGroup"
+  when: nsg_check.rc != 0
+  register: nsg_result
+
+- name: Add NSG rules
+  command: az network nsg rule create --resource-group {{ resource_group_name }} --nsg-name {{ nsg_name }} --name {{ item.name }} --priority {{ item.priority }} --direction {{ item.direction }} --access {{ item.access }} --protocol {{ item.protocol }} --source-port-ranges {{ item.source_port_range }} --destination-port-ranges {{ item.destination_port_range }} --source-address-prefixes {{ item.source_address_prefix }} --destination-address-prefixes {{ item.destination_address_prefix }}
+  loop: "{{ nsg_rules }}"
+  register: nsg_rules_result
+  failed_when: false
+
+- name: Set NSG facts
+  set_fact:
+    nsg_exists: "{{ nsg_check.rc == 0 }}"
+    nsg_id: "{{ (nsg_check.stdout | from_json).id if nsg_check.rc == 0 else '' }}"
+
+- name: Check if subnets exist
+  command: az network vnet subnet show --resource-group {{ resource_group_name }} --vnet-name {{ vnet_name }} --name {{ item.name }}
+  loop: "{{ subnets }}"
+  register: subnet_check
+  failed_when: false
+  changed_when: false
+
+- name: Create subnets
+  command: az network vnet subnet create --resource-group {{ resource_group_name }} --vnet-name {{ vnet_name }} --name {{ item.name }} --address-prefix {{ item.address_prefix }}
+  loop: "{{ subnets }}"
+  register: subnet_results
+  failed_when: false
+
+- name: Associate NSG to subnets
+  command: az network vnet subnet update --resource-group {{ resource_group_name }} --vnet-name {{ vnet_name }} --name {{ item.name }} --network-security-group {{ nsg_name }}
+  loop: "{{ subnets }}"
+  register: nsg_association_results
+  failed_when: false
+
+- name: Create VNet peerings
+  command: az network vnet peering create --resource-group {{ resource_group_name }} --vnet-name {{ vnet_name }} --name {{ item.name }} --remote-vnet {{ item.remote_vnet_id }} --allow-vnet-access {{ item.allow_virtual_network_access | default(true) }} --allow-forwarded-traffic {{ item.allow_forwarded_traffic | default(false) }} --allow-gateway-transit {{ item.allow_gateway_transit | default(false) }} --use-remote-gateways {{ item.use_remote_gateways | default(false) }}
+  loop: "{{ peerings }}"
+  when: peerings is defined and peerings | length > 0
+  register: peering_results
+
+- name: Display VNet creation summary
+  debug:
+    msg:
+      - "VNet Name: {{ vnet_name }}"
+      - "VNet ID: {{ vnet_id }}"
+      - "Address Space: {{ vnet_address_prefix }}"
+      - "Subnets Created: {{ subnets | map(attribute='name') | list }}"
+      - "NSG Name: {{ nsg_name }}"
+      - "NSG ID: {{ nsg_id }}"
+      - "Peerings: {{ peerings | map(attribute='name') | list if peerings is defined else [] }}"
+  when: display_vnet_info | default(true)

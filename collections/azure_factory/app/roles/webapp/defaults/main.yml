@@ -1,0 +1,34 @@
+---
+# Web App Role - Default Variables
+# Default values for Web App configuration
+
+# Web App Configuration
+webapp_name: "{{ project_name }}-{{ env_name }}-webapp"
+webapp_framework: "python"  # python, node, dotnet, java, php
+webapp_framework_version: "3.9"  # Version of the framework
+
+# App Settings
+webapp_app_settings:
+  WEBSITES_ENABLE_APP_SERVICE_STORAGE: "false"
+  WEBSITES_PORT: "8000"
+  SCM_DO_BUILD_DURING_DEPLOYMENT: "true"
+
+# Tags
+webapp_tags:
+  Project: "{{ project_name }}"
+  Environment: "{{ env_name }}"
+  ManagedBy: "Ansible"
+  ResourceType: "WebApp"
+
+# User Assigned Managed Identity settings
+enable_user_assigned_identity: false
+user_assigned_identity_name: "{{ project_name }}-{{ env_name }}-uami"
+user_assigned_identity_tags:
+  Project: "{{ project_name }}"
+  Environment: "{{ env_name }}"
+  ManagedBy: "Ansible"
+  ResourceType: "UserAssignedIdentity"
+
+# Display settings
+display_webapp_info: true
+enable_private_endpoint: false

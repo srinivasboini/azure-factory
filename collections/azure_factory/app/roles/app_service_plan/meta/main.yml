@@ -1,0 +1,19 @@
+---
+# App Service Plan Role - Meta Information
+galaxy_info:
+  author: Azure Factory Team
+  description: Role for creating Azure App Service Plans
+  company: Azure Factory
+  license: MIT
+  min_ansible_version: 2.9
+  platforms:
+    - name: Azure
+      versions:
+        - all
+  galaxy_tags:
+    - azure
+    - appservice
+    - webapp
+    - infrastructure
+
+dependencies: []

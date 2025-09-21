@@ -1,0 +1,79 @@
+---
+# Web App Role - Main Tasks
+# This role creates an Azure Web App using Azure CLI commands
+
+- name: Validate required variables
+  fail:
+    msg: "{{ item }} is required but not defined"
+  when: lookup('vars', item) is not defined or lookup('vars', item) == ""
+  loop:
+    - webapp_name
+    - resource_group_name
+    - app_service_plan_name
+    - location
+
+- name: Check if Web App already exists
+  command: az webapp show --resource-group "{{ resource_group_name }}" --name "{{ webapp_name }}"
+  register: webapp_check
+  failed_when: false
+  changed_when: false
+
+- name: Create Web App
+  command: az webapp create --resource-group "{{ resource_group_name }}" --plan "{{ app_service_plan_name }}" --name "{{ webapp_name }}" --runtime "{{ webapp_framework | default('python') }}:{{ webapp_framework_version | default('3.9') }}"
+  when: webapp_check.rc != 0
+  register: webapp_result
+
+- name: Set Web App facts
+  set_fact:
+    webapp_exists: "{{ webapp_check.rc == 0 }}"
+    webapp_id: "{{ (webapp_result.stdout | from_json).id if webapp_result is defined and webapp_result.changed else (webapp_check.stdout | from_json).id if webapp_check.rc == 0 else '' }}"
+    webapp_default_hostname: "{{ (webapp_result.stdout | from_json).defaultHostName if webapp_result is defined and webapp_result.changed else (webapp_check.stdout | from_json).defaultHostName if webapp_check.rc == 0 else '' }}"
+
+# User Assigned Managed Identity tasks
+- name: Check if User Assigned Managed Identity already exists
+  command: az identity show --resource-group "{{ resource_group_name }}" --name "{{ user_assigned_identity_name }}"
+  register: uami_check
+  failed_when: false
+  changed_when: false
+  when: enable_user_assigned_identity | default(false)
+
+- name: Create User Assigned Managed Identity
+  command: >
+    az identity create 
+    --resource-group "{{ resource_group_name }}" 
+    --name "{{ user_assigned_identity_name }}" 
+    --location "{{ location }}" 
+    --tags "{{ user_assigned_identity_tags | to_json }}"
+  when: 
+    - enable_user_assigned_identity | default(false)
+    - uami_check.rc != 0
+  register: uami_result
+
+- name: Set User Assigned Managed Identity facts
+  set_fact:
+    uami_exists: "{{ uami_check.rc == 0 }}"
+    uami_id: "{{ (uami_result.stdout | from_json).id if uami_result is defined and uami_result.changed else (uami_check.stdout | from_json).id if uami_check.rc == 0 else '' }}"
+    uami_client_id: "{{ (uami_result.stdout | from_json).clientId if uami_result is defined and uami_result.changed else (uami_check.stdout | from_json).clientId if uami_check.rc == 0 else '' }}"
+    uami_principal_id: "{{ (uami_result.stdout | from_json).principalId if uami_result is defined and uami_result.changed else (uami_check.stdout | from_json).principalId if uami_check.rc == 0 else '' }}"
+  when: enable_user_assigned_identity | default(false)
+
+- name: Assign User Assigned Managed Identity to Web App
+  command: az webapp identity assign --resource-group "{{ resource_group_name }}" --name "{{ webapp_name }}" --identities "{{ uami_id }}"
+  when: 
+    - enable_user_assigned_identity | default(false)
+    - uami_id != ""
+  register: webapp_identity_assignment
+
+- name: Display Web App information
+  debug:
+    msg:
+      - "Web App: {{ webapp_name }}"
+      - "Resource Group: {{ resource_group_name }}"
+      - "App Service Plan: {{ app_service_plan_name }}"
+      - "Location: {{ location }}"
+      - "Framework: {{ webapp_framework | default('python') }} {{ webapp_framework_version | default('3.9') }}"
+      - "Default Hostname: {{ webapp_default_hostname | default('N/A') }}"
+      - "User Assigned Identity: {{ 'Enabled' if enable_user_assigned_identity | default(false) else 'Disabled' }}"
+      - "UAMI Name: {{ user_assigned_identity_name if enable_user_assigned_identity | default(false) else 'N/A' }}"
+      - "UAMI Client ID: {{ uami_client_id | default('N/A') if enable_user_assigned_identity | default(false) else 'N/A' }}"
+  when: display_webapp_info | default(true)

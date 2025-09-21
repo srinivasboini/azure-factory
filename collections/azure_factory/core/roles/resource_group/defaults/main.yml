@@ -1,0 +1,11 @@
+---
+# Resource Group Role Defaults
+# Default values for the resource group role
+
+resource_group_name: "{{ project_name }}-{{ env_name }}-rg"
+resource_group_location: "East US"
+resource_group_tags:
+  Project: "{{ project_name }}"
+  Environment: "{{ env_name }}"
+  ManagedBy: "Ansible"
+display_rg_info: true

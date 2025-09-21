@@ -1,0 +1,235 @@
+---
+# Azure VNet Creation Playbook using Roles
+# This playbook demonstrates how to create a VNet using only roles
+
+- name: Create Azure VNet with Subnets and NSG using Roles
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  
+  vars:
+    # Project configuration
+    project_name: "myapp"
+    env_name: "dev"
+    
+    # Custom VNet configuration (optional - defaults are in role)
+    vnet_address_prefix: "10.0.0.0/16"
+    
+    # Custom subnet configuration (optional - defaults are in role)
+    subnets:
+      # Delegated subnet for App Service Plan
+      - name: "appservice-delegated"
+        address_prefix: "10.0.1.0/24"
+        service_endpoints: ["Microsoft.Web"]
+        delegation:
+          name: "Microsoft.Web.serverFarms"
+          service_name: "Microsoft.Web/serverFarms"
+      # Non-delegated subnet for Private Endpoint
+      - name: "appservice-private"
+        address_prefix: "10.0.2.0/24"
+        service_endpoints: []
+      # Frontend subnet for web applications
+      - name: "frontend"
+        address_prefix: "10.0.3.0/24"
+        service_endpoints: []
+      # Backend subnet for API services
+      - name: "backend"
+        address_prefix: "10.0.4.0/24"
+        service_endpoints: []
+      # Database subnet for database services
+      - name: "database"
+        address_prefix: "10.0.5.0/24"
+        service_endpoints: ["Microsoft.Sql", "Microsoft.Storage"]
+    
+    # Custom NSG rules (optional - defaults are in role)
+    nsg_rules:
+      - name: "AllowSSH"
+        priority: 1000
+        direction: "Inbound"
+        access: "Allow"
+        protocol: "Tcp"
+        source_port_range: "*"
+        destination_port_range: "22"
+        source_address_prefix: "*"
+        destination_address_prefix: "*"
+      - name: "AllowHTTP"
+        priority: 1100
+        direction: "Inbound"
+        access: "Allow"
+        protocol: "Tcp"
+        source_port_range: "*"
+        destination_port_range: "80"
+        source_address_prefix: "*"
+        destination_address_prefix: "*"
+      - name: "AllowHTTPS"
+        priority: 1200
+        direction: "Inbound"
+        access: "Allow"
+        protocol: "Tcp"
+        source_port_range: "*"
+        destination_port_range: "443"
+        source_address_prefix: "*"
+        destination_address_prefix: "*"
+      - name: "AllowRDP"
+        priority: 1300
+        direction: "Inbound"
+        access: "Allow"
+        protocol: "Tcp"
+        source_port_range: "*"
+        destination_port_range: "3389"
+        source_address_prefix: "*"
+        destination_address_prefix: "*"
+  
+  pre_tasks:
+    - name: Display VNet creation information
+      debug:
+        msg:
+          - "Creating VNet: {{ project_name }}-{{ env_name }}-vnet"
+          - "Address Space: {{ vnet_address_prefix }}"
+          - "Subnets: {{ subnets | map(attribute='name') | list }}"
+          - "Delegated Subnet: appservice-delegated (for App Service Plan)"
+          - "Private Subnet: appservice-private (for Private Endpoint)"
+          - "NSG: {{ project_name }}-{{ env_name }}-nsg"
+    
+    - name: Validate required environment variables (optional)
+      fail:
+        msg: "{{ item }} environment variable is required for validation"
+      when: 
+        - lookup('env', item) is not defined or lookup('env', item) == ""
+        - validate_env_vars | default(false)
+      loop:
+        - AZURE_SUBSCRIPTION_ID
+        - AZURE_TENANT_ID
+  
+  roles:
+    - role: azure_auth
+      vars:
+        project_name: "myapp"
+        environment: "dev"
+        azure_subscription_id: "{{ lookup('env', 'AZURE_SUBSCRIPTION_ID') | default('') }}"
+        azure_tenant_id: "{{ lookup('env', 'AZURE_TENANT_ID') | default('') }}"
+        azure_auth_method: "{{ lookup('env', 'AZURE_AUTH_METHOD') | default('cli') }}"
+        validate_auth: true
+    
+    - role: resource_group
+      vars:
+        project_name: "myapp"
+        env_name: "dev"
+        resource_group_name: "myapp-dev-rg"
+        resource_group_location: "eastus"
+        resource_group_tags:
+          Project: "myapp"
+          Environment: "dev"
+          ManagedBy: "Ansible"
+        display_rg_info: true
+    
+    - role: vnet_complete
+      vars:
+        project_name: "myapp"
+        env_name: "dev"
+        resource_group_name: "myapp-dev-rg"
+        vnet_name: "myapp-dev-vnet"
+        vnet_address_prefix: "10.0.0.0/16"
+        nsg_name: "myapp-dev-nsg"
+        subnets:
+          # Delegated subnet for App Service Plan
+          - name: "appservice-delegated"
+            address_prefix: "10.0.1.0/24"
+            service_endpoints: ["Microsoft.Web"]
+            delegation:
+              name: "Microsoft.Web.serverFarms"
+              service_name: "Microsoft.Web/serverFarms"
+          # Non-delegated subnet for Private Endpoint
+          - name: "appservice-private"
+            address_prefix: "10.0.2.0/24"
+            service_endpoints: []
+          # Frontend subnet for web applications
+          - name: "frontend"
+            address_prefix: "10.0.3.0/24"
+            service_endpoints: []
+          # Backend subnet for API services
+          - name: "backend"
+            address_prefix: "10.0.4.0/24"
+            service_endpoints: []
+          # Database subnet for database services
+          - name: "database"
+            address_prefix: "10.0.5.0/24"
+            service_endpoints: ["Microsoft.Sql", "Microsoft.Storage"]
+        nsg_rules:
+          - name: "AllowSSH"
+            priority: 1000
+            direction: "Inbound"
+            access: "Allow"
+            protocol: "Tcp"
+            source_port_range: "*"
+            destination_port_range: "22"
+            source_address_prefix: "*"
+            destination_address_prefix: "*"
+          - name: "AllowHTTP"
+            priority: 1100
+            direction: "Inbound"
+            access: "Allow"
+            protocol: "Tcp"
+            source_port_range: "*"
+            destination_port_range: "80"
+            source_address_prefix: "*"
+            destination_address_prefix: "*"
+          - name: "AllowHTTPS"
+            priority: 1200
+            direction: "Inbound"
+            access: "Allow"
+            protocol: "Tcp"
+            source_port_range: "*"
+            destination_port_range: "443"
+            source_address_prefix: "*"
+            destination_address_prefix: "*"
+          - name: "AllowRDP"
+            priority: 1300
+            direction: "Inbound"
+            access: "Allow"
+            protocol: "Tcp"
+            source_port_range: "*"
+            destination_port_range: "3389"
+            source_address_prefix: "*"
+            destination_address_prefix: "*"
+        display_vnet_info: true
+  
+  post_tasks:
+    - name: Display final summary
+      debug:
+        msg:
+          - "🎉 VNet Creation Completed Successfully!"
+          - "Resource Group: {{ project_name }}-{{ env_name }}-rg"
+          - "VNet Name: {{ project_name }}-{{ env_name }}-vnet"
+          - "Address Space: {{ vnet_address_prefix }}"
+          - "Subnets Created: {{ subnets | map(attribute='name') | list }}"
+          - "Delegated Subnet: appservice-delegated (10.0.1.0/24)"
+          - "Private Subnet: appservice-private (10.0.2.0/24)"
+          - "NSG Name: {{ project_name }}-{{ env_name }}-nsg"
+          - "Azure Account: {{ azure_account.name }}"
+          - "Subscription: {{ azure_account.subscription_id }}"
+    
+    - name: Save VNet information to file
+      copy:
+        content: |
+          # Azure VNet Creation Summary
+          Project: {{ project_name }}
+          Environment: {{ env_name }}
+          Creation Date: {{ ansible_date_time.iso8601 }}
+          Resource Group: {{ project_name }}-{{ env_name }}-rg
+          VNet Name: {{ project_name }}-{{ env_name }}-vnet
+          Address Space: {{ vnet_address_prefix }}
+          Subnets:
+          {% for subnet in subnets %}
+          - Name: {{ subnet.name }}
+            Address Prefix: {{ subnet.address_prefix }}
+            {% if subnet.delegation is defined %}
+            Delegation: {{ subnet.delegation.service_name }}
+            {% endif %}
+          {% endfor %}
+          NSG Name: {{ project_name }}-{{ env_name }}-nsg
+          Azure Account: {{ azure_account.name }}
+          Subscription: {{ azure_account.subscription_id }}
+        dest: "./vnet-summary-{{ project_name }}-{{ env_name }}.txt"
+      delegate_to: localhost
+      when: save_vnet_info | default(false)

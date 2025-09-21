@@ -1,0 +1,58 @@
+---
+# VNet Validation Tasks
+# These tasks validate VNet configuration before creation
+
+- name: Validate VNet address space format
+  fail:
+    msg: "Invalid VNet address space format: {{ vnet_address_prefix }}. Expected format: x.x.x.x/x"
+  when: 
+    - validate_address_space
+    - not (vnet_address_prefix is match('^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]{1,2}$'))
+
+- name: Validate subnet address space formats
+  fail:
+    msg: "Invalid subnet address space format: {{ item.address_prefix }}. Expected format: x.x.x.x/x"
+  when: 
+    - validate_subnets
+    - not (item.address_prefix is match('^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]{1,2}$'))
+  loop: "{{ subnets }}"
+
+- name: Check subnet overlap with VNet
+  fail:
+    msg: "Subnet {{ item.address_prefix }} is not within VNet address space {{ vnet_address_prefix }}"
+  when: 
+    - validate_subnets
+    - not (item.address_prefix | ipaddr('within', vnet_address_prefix))
+  loop: "{{ subnets }}"
+
+- name: Check for subnet overlaps
+  fail:
+    msg: "Subnet {{ item1.name }} ({{ item1.address_prefix }}) overlaps with subnet {{ item2.name }} ({{ item2.address_prefix }})"
+  when: 
+    - check_subnet_overlap
+    - item1.name != item2.name
+    - item1.address_prefix | ipaddr('overlaps', item2.address_prefix)
+  loop: "{{ subnets | subelements('subnets') }}"
+  vars:
+    item1: "{{ item.0 }}"
+    item2: "{{ item.1 }}"
+
+- name: Validate NSG rules
+  fail:
+    msg: "NSG rule {{ item.name }} has invalid priority {{ item.priority }}. Must be between 100 and 4096"
+  when: 
+    - create_nsg
+    - item.priority < 100 or item.priority > 4096
+  loop: "{{ nsg_rules }}"
+
+- name: Check for duplicate NSG rule priorities
+  fail:
+    msg: "Duplicate NSG rule priority {{ item.0.priority }} found for rules {{ item.0.name }} and {{ item.1.name }}"
+  when: 
+    - create_nsg
+    - item.0.name != item.1.name
+    - item.0.priority == item.1.priority
+  loop: "{{ nsg_rules | subelements('nsg_rules') }}"
+  vars:
+    item1: "{{ item.0 }}"
+    item2: "{{ item.1 }}"

@@ -1,0 +1,154 @@
+---
+# Web App Deployment Group Variables - Production Environment
+# These variables are specific to the production environment for Web App deployment
+
+# Environment-specific settings
+environment: prod
+project_name: "myapp"
+default_location: "East US"
+
+# Resource naming conventions
+resource_prefix: "{{ project_name }}-{{ environment }}"
+
+# Azure Authentication (use environment variables or Ansible Vault)
+azure_subscription_id: "{{ lookup('env', 'AZURE_SUBSCRIPTION_ID') | default('') }}"
+azure_tenant_id: "{{ lookup('env', 'AZURE_TENANT_ID') | default('') }}"
+azure_auth_method: "{{ lookup('env', 'AZURE_AUTH_METHOD') | default('cli') }}"
+
+# Resource Group Configuration
+resource_group_name: "{{ project_name }}-{{ environment }}-rg"
+resource_group_location: "{{ default_location }}"
+
+# Network Configuration
+vnet_name: "{{ project_name }}-{{ environment }}-vnet"
+vnet_address_prefix: "10.1.0.0/16"
+
+# Subnet Configuration
+delegated_subnet_name: "appservice-delegated"
+non_delegated_subnet_name: "appservice-private"
+delegated_subnet_prefix: "10.1.1.0/24"
+non_delegated_subnet_prefix: "10.1.2.0/24"
+
+# App Service Plan Configuration
+app_service_plan_name: "{{ project_name }}-{{ environment }}-asp"
+sku_name: "P2V3"  # Premium V3 for production
+sku_tier: "PremiumV3"
+sku_size: "P2V3"
+sku_capacity: 2  # Multiple instances for high availability
+app_service_plan_kind: "Linux"  # Linux or Windows
+app_service_plan_reserved: true  # Required for Linux plans
+
+# Web App Configuration
+webapp_name: "{{ project_name }}-{{ environment }}-webapp"
+webapp_framework: "python"  # python, node, dotnet, java, php
+webapp_framework_version: "3.9"  # Version of the framework
+
+# Web App App Settings
+webapp_app_settings:
+  WEBSITES_ENABLE_APP_SERVICE_STORAGE: "false"
+  WEBSITES_PORT: "8000"
+  SCM_DO_BUILD_DURING_DEPLOYMENT: "true"
+  # Production-specific settings
+  WEBSITES_CONTAINER_START_TIME_LIMIT: "1800"
+  WEBSITES_ENABLE_APP_SERVICE_STORAGE: "false"
+  # Add your production app settings here
+  # APP_SETTING_KEY: "value"
+
+# Private Endpoint Configuration
+enable_private_endpoint: true
+private_endpoint_name: "{{ project_name }}-{{ environment }}-pe"
+private_endpoint_group_ids: ["sites"]  # For Web App, use "sites"
+
+# User Assigned Managed Identity Configuration
+enable_user_assigned_identity: true  # Enable UAMI for the webapp
+user_assigned_identity_name: "{{ project_name }}-{{ environment }}-uami"
+user_assigned_identity_tags:
+  Project: "{{ project_name }}"
+  Environment: "{{ environment }}"
+  ManagedBy: "Ansible"
+  ResourceType: "UserAssignedIdentity"
+
+# Private DNS Zone Configuration
+dns_zone_name: "privatelink.azurewebsites.net"  # Standard zone for Web App private endpoints
+
+# Custom Domain Configuration
+custom_domain_name: "{{ project_name }}.yourdomain.com"  # Change to your actual production domain
+create_dns_zone: true  # Set to true for production
+create_ssl_certificate: true  # Set to true for production
+
+# SSL Certificate Configuration (use Ansible Vault for production)
+ssl_cert_path: "/path/to/your/ssl/certificate.pfx"  # Path to SSL certificate file
+ssl_cert_password: "{{ vault_ssl_cert_password }}"  # Password for SSL certificate (use vault)
+domain_verification_token: "{{ vault_domain_verification_token }}"  # Token for domain verification (use vault)
+
+# NSG Configuration
+nsg_name: "{{ project_name }}-{{ environment }}-nsg"
+nsg_rules:
+  - name: "AllowHTTPS"
+    priority: 1000
+    direction: "Inbound"
+    access: "Allow"
+    protocol: "Tcp"
+    source_port_range: "*"
+    destination_port_range: "443"
+    source_address_prefix: "*"
+    destination_address_prefix: "*"
+  - name: "AllowHTTP"
+    priority: 1100
+    direction: "Inbound"
+    access: "Allow"
+    protocol: "Tcp"
+    source_port_range: "*"
+    destination_port_range: "80"
+    source_address_prefix: "*"
+    destination_address_prefix: "*"
+  - name: "DenyAllInbound"
+    priority: 4000
+    direction: "Inbound"
+    access: "Deny"
+    protocol: "*"
+    source_port_range: "*"
+    destination_port_range: "*"
+    source_address_prefix: "*"
+    destination_address_prefix: "*"
+
+# Security settings
+enable_ddos_protection: true  # Enable for production
+enable_vm_protection: true  # Enable for production
+enable_service_endpoints: true
+enable_nsg_flow_logs: true  # Enable for production
+
+# Monitoring settings
+enable_diagnostics: true
+log_retention_days: 90  # Longer retention for production
+
+# Cost optimization
+enable_auto_shutdown: false  # Disable for production
+auto_shutdown_time: "19:00"
+
+# Validation settings
+validate_env_vars: true
+validate_auth: true
+
+# Display settings
+display_rg_info: true
+display_vnet_info: true
+display_asp_info: true
+display_webapp_info: true
+display_pe_info: true
+display_dns_info: true
+display_domain_info: true
+
+# Output settings
+save_deployment_info: true  # Save for production
+
+# Production-specific tags
+environment_tags:
+  Environment: "{{ environment }}"
+  CostCenter: "Production"
+  Owner: "ProdTeam"
+  BackupRequired: "true"
+  Project: "{{ project_name }}"
+  ManagedBy: "Ansible"
+  Compliance: "Required"
+  DataClassification: "Confidential"

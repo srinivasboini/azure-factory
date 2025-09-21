@@ -1,0 +1,16 @@
+---
+# VNet Role Variables
+# These variables can be overridden in playbooks or inventory
+
+# Validation settings
+validate_address_space: true
+validate_subnets: true
+check_subnet_overlap: true
+
+# Creation settings
+create_vnet: true
+create_subnets: true
+associate_nsg_to_subnets: true
+
+# Cleanup settings
+cleanup_on_failure: false

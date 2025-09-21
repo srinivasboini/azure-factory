@@ -1,0 +1,23 @@
+---
+# VNet Destroy Role Meta
+# Metadata for the VNet destroy role
+
+galaxy_info:
+  author: Azure Factory Team
+  description: Destroys Azure VNet and associated resources using Azure CLI
+  company: Azure Factory
+  license: MIT
+  min_ansible_version: 2.9
+  platforms:
+    - name: Azure
+      versions:
+        - all
+  galaxy_tags:
+    - azure
+    - vnet
+    - network
+    - destroy
+    - cleanup
+    - infrastructure
+
+dependencies: []

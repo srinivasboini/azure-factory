@@ -1,0 +1,25 @@
+---
+# Custom Domain Role - Default Variables
+# Default values for Custom Domain configuration
+
+# Custom Domain Configuration
+custom_domain_name: "{{ project_name }}-{{ env_name }}.example.com"  # Change to your actual domain
+create_dns_zone: false  # Set to true if you want to create DNS zone
+create_ssl_certificate: false  # Set to true if you want to create SSL certificate
+
+# SSL Certificate Configuration
+ssl_cert_path: ""  # Path to SSL certificate file
+ssl_cert_password: ""  # Password for SSL certificate
+
+# Domain Verification
+domain_verification_token: ""  # Token for domain verification
+
+# Tags
+dns_zone_tags:
+  Project: "{{ project_name }}"
+  Environment: "{{ env_name }}"
+  ManagedBy: "Ansible"
+  ResourceType: "DNSZone"
+
+# Display settings
+display_domain_info: true

@@ -1,0 +1,32 @@
+---
+# Ansible Vault file for sensitive Web App deployment variables
+# This file should be encrypted using: ansible-vault encrypt vault.yml
+# To edit: ansible-vault edit vault.yml
+# To decrypt: ansible-vault decrypt vault.yml
+
+# SSL Certificate Configuration
+vault_ssl_cert_password: "your-ssl-certificate-password-here"
+vault_domain_verification_token: "your-domain-verification-token-here"
+
+# Azure Service Principal (if using service principal authentication)
+vault_azure_client_id: "your-azure-client-id-here"
+vault_azure_client_secret: "your-azure-client-secret-here"
+
+# Custom Domain Configuration
+vault_custom_domain_name: "your-production-domain.com"
+vault_dns_zone_name: "your-production-domain.com"
+
+# Database Connection Strings (if applicable)
+vault_database_connection_string: "your-database-connection-string-here"
+
+# Application Secrets
+vault_app_secret_key: "your-application-secret-key-here"
+vault_api_key: "your-api-key-here"
+
+# Third-party Service Credentials
+vault_sendgrid_api_key: "your-sendgrid-api-key-here"
+vault_storage_account_key: "your-storage-account-key-here"
+
+# Monitoring and Logging
+vault_application_insights_key: "your-application-insights-key-here"
+vault_log_analytics_workspace_id: "your-log-analytics-workspace-id-here"

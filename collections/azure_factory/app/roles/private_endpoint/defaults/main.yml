@@ -1,0 +1,17 @@
+---
+# Private Endpoint Role - Default Variables
+# Default values for Private Endpoint configuration
+
+# Private Endpoint Configuration
+private_endpoint_name: "{{ project_name }}-{{ env_name }}-pe"
+private_endpoint_group_ids: ["sites"]  # For Web App, use "sites"
+
+# Tags
+private_endpoint_tags:
+  Project: "{{ project_name }}"
+  Environment: "{{ env_name }}"
+  ManagedBy: "Ansible"
+  ResourceType: "PrivateEndpoint"
+
+# Display settings
+display_pe_info: true

@@ -1,0 +1,145 @@
+---
+# Azure Web App Deployment Playbook
+# This playbook deploys the Web App only (requires infrastructure to be deployed first)
+# Run this after: ansible-playbook -i inventories/dev playbooks/deploy_infrastructure.yml
+
+- name: Deploy Azure Web App
+  hosts: azure_dev
+  connection: local
+  gather_facts: false
+  
+  pre_tasks:
+    - name: Display webapp deployment information
+      debug:
+        msg:
+          - "🚀 Starting Azure Web App Deployment"
+          - "Project: {{ project_name }}"
+          - "Environment: {{ env_name }}"
+          - "Resource Group: {{ resource_group_name }}"
+          - "App Service Plan: {{ app_service_plan_name }}"
+          - "Web App: {{ webapp_name }}"
+          - "Framework: {{ webapp_framework }} {{ webapp_framework_version }}"
+          - "Private Endpoint: {{ 'Enabled' if enable_private_endpoint else 'Disabled (Free Tier)' }}"
+          - "User Assigned Identity: {{ 'Enabled' if enable_user_assigned_identity | default(false) else 'Disabled' }}"
+          - "UAMI Name: {{ user_assigned_identity_name | default('N/A') if enable_user_assigned_identity | default(false) else 'N/A' }}"
+          - "Custom Domain: {{ custom_domain_name | default('Using default Azure domain') if custom_domain_name | default('') != '' else 'Using default Azure domain' }}"
+    
+    - name: Validate required environment variables
+      fail:
+        msg: "{{ item }} environment variable is required"
+      when: 
+        - lookup('env', item) is not defined or lookup('env', item) == ""
+        - validate_env_vars | default(true)
+      loop:
+        - AZURE_SUBSCRIPTION_ID
+        - AZURE_TENANT_ID
+    
+    - name: Check if App Service Plan exists
+      command: az appservice plan show --resource-group "{{ resource_group_name }}" --name "{{ app_service_plan_name }}"
+      register: asp_check
+      failed_when: false
+      changed_when: false
+    
+    - name: Fail if App Service Plan doesn't exist
+      fail:
+        msg: "App Service Plan '{{ app_service_plan_name }}' not found. Please run infrastructure deployment first: ansible-playbook -i inventories/dev playbooks/deploy_infrastructure.yml"
+      when: asp_check.rc != 0
+  
+  roles:
+    # Step 1: Azure Authentication
+    - role: azure_auth
+      vars:
+        project_name: "{{ project_name }}"
+        environment: "{{ env_name }}"
+        azure_subscription_id: "{{ lookup('env', 'AZURE_SUBSCRIPTION_ID') | default('') }}"
+        azure_tenant_id: "{{ lookup('env', 'AZURE_TENANT_ID') | default('') }}"
+        azure_auth_method: "{{ lookup('env', 'AZURE_AUTH_METHOD') | default('cli') }}"
+        validate_auth: true
+    
+    # Step 2: Create Web App
+    - role: webapp
+      vars:
+        display_webapp_info: true
+    
+    # Step 3: Create Private DNS Zone (if private endpoint is enabled)
+    - role: private_dns_zone
+      vars:
+        display_dns_info: true
+      when: enable_private_endpoint | default(false)
+    
+    # Step 4: Create Private Endpoint (if enabled)
+    - role: private_endpoint
+      vars:
+        display_pe_info: true
+      when: enable_private_endpoint | default(false)
+    
+    # Step 5: Configure Custom Domain (if enabled) - SKIPPED
+    # - role: custom_domain
+    #   vars:
+    #     display_domain_info: true
+    #   when: custom_domain_name != "" and custom_domain_name is defined
+  
+  post_tasks:
+    - name: Display webapp deployment summary
+      debug:
+        msg:
+          - "🎉 Web App Deployment Completed Successfully!"
+          - "Resource Group: {{ resource_group_name }}"
+          - "App Service Plan: {{ app_service_plan_name }}"
+          - "Web App: {{ webapp_name }}"
+          - "Default Hostname: {{ webapp_default_hostname | default('N/A') }}"
+          - "Private Endpoint: {{ private_endpoint_name if enable_private_endpoint | default(false) else 'Disabled (Free Tier)' }}"
+          - "Private IP: {{ private_endpoint_ip | default('N/A') if enable_private_endpoint | default(false) else 'N/A' }}"
+          - "User Assigned Identity: {{ 'Enabled' if enable_user_assigned_identity | default(false) else 'Disabled' }}"
+          - "UAMI Name: {{ user_assigned_identity_name if enable_user_assigned_identity | default(false) else 'N/A' }}"
+          - "UAMI Client ID: {{ uami_client_id | default('N/A') if enable_user_assigned_identity | default(false) else 'N/A' }}"
+          - "Custom Domain: {{ custom_domain_name | default('Using default Azure domain') if custom_domain_name | default('') != '' else 'Using default Azure domain' }}"
+          - "Azure Account: {{ azure_account.name }}"
+          - "Subscription: {{ azure_account.subscription_id }}"
+          - ""
+          - "🌐 Your Web App is now available at:"
+          - "https://{{ webapp_default_hostname | default('myapp-dev-webapp.azurewebsites.net') }}"
+          - ""
+          - "🧹 To clean up resources, run:"
+          - "ansible-playbook -i inventories/dev playbooks/destroy_webapp.yml"
+    
+    - name: Save webapp deployment information to file
+      copy:
+        content: |
+          # Azure Web App Deployment Summary
+          Project: {{ project_name }}
+          Environment: {{ env_name }}
+          Deployment Date: {{ ansible_date_time.iso8601 }}
+          
+          ## Web App Created
+          Resource Group: {{ resource_group_name }}
+          App Service Plan: {{ app_service_plan_name }}
+          Web App: {{ webapp_name }}
+          Default Hostname: {{ webapp_default_hostname | default('N/A') }}
+          
+          ## Access Information
+          Web App URL: https://{{ webapp_default_hostname | default('myapp-dev-webapp.azurewebsites.net') }}
+          
+          ## Private Endpoint Configuration
+          Private Endpoint: {{ private_endpoint_name if enable_private_endpoint | default(false) else 'Disabled (Free Tier)' }}
+          Private IP: {{ private_endpoint_ip | default('N/A') if enable_private_endpoint | default(false) else 'N/A' }}
+          Private DNS Zone: {{ 'privatelink.azurewebsites.net' if enable_private_endpoint | default(false) else 'N/A' }}
+          
+          ## User Assigned Managed Identity Configuration
+          User Assigned Identity: {{ 'Enabled' if enable_user_assigned_identity | default(false) else 'Disabled' }}
+          UAMI Name: {{ user_assigned_identity_name if enable_user_assigned_identity | default(false) else 'N/A' }}
+          UAMI Client ID: {{ uami_client_id | default('N/A') if enable_user_assigned_identity | default(false) else 'N/A' }}
+          
+          ## Custom Domain Configuration
+          Custom Domain: {{ custom_domain_name if custom_domain_name != '' else 'Using default Azure domain' }}
+          SSL Certificate: {{ 'Enabled' if create_ssl_certificate | default(false) else 'Disabled' }}
+          
+          ## Azure Account Information
+          Azure Account: {{ azure_account.name }}
+          Subscription: {{ azure_account.subscription_id }}
+          
+          ## Cleanup
+          To remove all resources: ansible-playbook -i inventories/dev playbooks/destroy_webapp.yml
+        dest: "./webapp-deployment-summary-{{ project_name }}-{{ env_name }}.txt"
+      delegate_to: localhost
+      when: save_webapp_info | default(false)

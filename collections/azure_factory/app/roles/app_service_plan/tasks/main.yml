@@ -1,0 +1,40 @@
+---
+# App Service Plan Role - Main Tasks
+# This role creates an Azure App Service Plan using Azure CLI commands
+
+- name: Validate required variables
+  fail:
+    msg: "{{ item }} is required but not defined"
+  when: lookup('vars', item) is not defined or lookup('vars', item) == ""
+  loop:
+    - app_service_plan_name
+    - resource_group_name
+    - location
+    - sku_name
+
+- name: Check if App Service Plan already exists
+  command: az appservice plan show --resource-group "{{ resource_group_name }}" --name "{{ app_service_plan_name }}"
+  register: asp_check
+  failed_when: false
+  changed_when: false
+
+- name: Create App Service Plan
+  command: az appservice plan create --resource-group "{{ resource_group_name }}" --name "{{ app_service_plan_name }}" --location "{{ location }}" --sku "{{ sku_name }}" --is-linux
+  when: asp_check.rc != 0
+  register: asp_result
+
+- name: Set App Service Plan facts
+  set_fact:
+    app_service_plan_exists: "{{ asp_check.rc == 0 }}"
+    app_service_plan_id: "{{ (asp_result.stdout | from_json).id if asp_result is defined and asp_result.changed else (asp_check.stdout | from_json).id if asp_check.rc == 0 else '' }}"
+
+- name: Display App Service Plan information
+  debug:
+    msg:
+      - "App Service Plan: {{ app_service_plan_name }}"
+      - "Resource Group: {{ resource_group_name }}"
+      - "Location: {{ location }}"
+      - "SKU: {{ sku_name }}"
+      - "Kind: Linux"
+      - "Reserved: true"
+  when: display_asp_info | default(true)

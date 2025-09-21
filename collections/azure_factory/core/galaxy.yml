@@ -1,0 +1,17 @@
+namespace: azure_factory
+name: core
+version: 1.0.0
+readme: README.md
+authors:
+  - Azure Factory Team
+description: Core Azure Factory collection for authentication and common utilities
+license_file: LICENSE
+tags:
+  - azure
+  - authentication
+  - core
+dependencies: {}
+repository: https://github.com/your-org/azure-factory
+documentation: https://github.com/your-org/azure-factory
+homepage: https://github.com/your-org/azure-factory
+issues: https://github.com/your-org/azure-factory/issues

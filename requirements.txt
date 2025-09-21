@@ -1,0 +1,13 @@
+# Minimal Azure Factory Requirements
+# Only essential dependencies for Azure CLI-based automation
+
+# Core Ansible (using ansible-core for better compatibility)
+ansible-core>=2.10,<3.0
+
+# Python dependencies (minimal)
+pyyaml>=5.1
+jinja2>=2.10
+six>=1.15.0
+
+# Azure CLI (installed separately via official installer)
+# azure-cli>=2.0

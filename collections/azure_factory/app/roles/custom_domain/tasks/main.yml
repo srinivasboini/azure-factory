@@ -1,0 +1,98 @@
+---
+# Custom Domain Role - Main Tasks
+# This role configures custom domain and SSL certificate for Azure Web App
+
+- name: Validate required variables
+  fail:
+    msg: "{{ item }} is required but not defined"
+  when: lookup('vars', item) is not defined or lookup('vars', item) == ""
+  loop:
+    - webapp_name
+    - resource_group_name
+    - custom_domain_name
+
+- name: Check if custom domain is already configured
+  azure.azcollection.azure_rm_webapp_info:
+    resource_group: "{{ resource_group_name }}"
+    name: "{{ webapp_name }}"
+  register: webapp_domain_info
+  when: check_mode is not defined or not check_mode
+
+- name: Add custom domain to Web App
+  azure.azcollection.azure_rm_webapp:
+    resource_group: "{{ resource_group_name }}"
+    name: "{{ webapp_name }}"
+    custom_domains:
+      - name: "{{ custom_domain_name }}"
+    state: present
+  register: webapp_domain_result
+  when: webapp_domain_info is defined and custom_domain_name not in (webapp_domain_info.host_names | default([]))
+
+- name: Create DNS Zone for custom domain
+  azure.azcollection.azure_rm_dnszone:
+    resource_group: "{{ resource_group_name }}"
+    name: "{{ custom_domain_name }}"
+    tags: "{{ dns_zone_tags | default({}) }}"
+    state: present
+  register: dns_zone_result
+  when: create_dns_zone | default(false)
+
+- name: Create TXT record for domain verification
+  azure.azcollection.azure_rm_dnsrecordset:
+    resource_group: "{{ resource_group_name }}"
+    zone_name: "{{ custom_domain_name }}"
+    relative_record_set_name: "asuid"
+    record_type: "TXT"
+    records:
+      - value: "{{ domain_verification_token | default('') }}"
+    state: present
+  when: create_dns_zone | default(false) and domain_verification_token is defined
+
+- name: Create CNAME record for custom domain
+  azure.azcollection.azure_rm_dnsrecordset:
+    resource_group: "{{ resource_group_name }}"
+    zone_name: "{{ custom_domain_name }}"
+    relative_record_set_name: "www"
+    record_type: "CNAME"
+    records:
+      - value: "{{ webapp_default_hostname }}"
+    state: present
+  when: create_dns_zone | default(false) and webapp_default_hostname is defined
+
+- name: Create self-signed SSL certificate
+  azure.azcollection.azure_rm_webapp:
+    resource_group: "{{ resource_group_name }}"
+    name: "{{ webapp_name }}"
+    ssl_certificates:
+      - name: "{{ custom_domain_name }}-cert"
+        certificate_file: "{{ ssl_cert_path | default('') }}"
+        certificate_password: "{{ ssl_cert_password | default('') }}"
+    state: present
+  register: ssl_cert_result
+  when: create_ssl_certificate | default(false) and ssl_cert_path is defined
+
+- name: Bind SSL certificate to custom domain
+  azure.azcollection.azure_rm_webapp:
+    resource_group: "{{ resource_group_name }}"
+    name: "{{ webapp_name }}"
+    custom_domains:
+      - name: "{{ custom_domain_name }}"
+        ssl_state: "SniEnabled"
+        thumbprint: "{{ ssl_cert_result.ssl_certificates[0].thumbprint | default('') }}"
+    state: present
+  when: create_ssl_certificate | default(false) and ssl_cert_result is defined
+
+- name: Display custom domain information
+  debug:
+    msg:
+      - "Custom Domain: {{ custom_domain_name }}"
+      - "Web App: {{ webapp_name }}"
+      - "Resource Group: {{ resource_group_name }}"
+      - "SSL Certificate: {{ 'Enabled' if create_ssl_certificate | default(false) else 'Disabled' }}"
+      - "DNS Zone Created: {{ 'Yes' if create_dns_zone | default(false) else 'No' }}"
+  when: display_domain_info | default(true)
+
+- name: Set custom domain facts
+  set_fact:
+    custom_domain_name: "{{ custom_domain_name }}"
+    custom_domain_configured: true

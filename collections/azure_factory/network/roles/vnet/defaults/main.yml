@@ -1,0 +1,68 @@
+---
+# VNet Role Default Variables
+# These variables define default values for Virtual Network creation
+
+# VNet configuration
+vnet_name: "{{ project_name }}-{{ environment }}-vnet"
+vnet_address_prefix: "10.0.0.0/16"
+vnet_dns_servers: []
+
+# Subnet configuration
+subnets:
+  - name: "frontend"
+    address_prefix: "10.0.1.0/24"
+    service_endpoints: []
+    delegations: []
+  - name: "backend"
+    address_prefix: "10.0.2.0/24"
+    service_endpoints: []
+    delegations: []
+  - name: "database"
+    address_prefix: "10.0.3.0/24"
+    service_endpoints: ["Microsoft.Sql", "Microsoft.Storage"]
+    delegations: []
+
+# Network Security Group configuration
+create_nsg: true
+nsg_name: "{{ project_name }}-{{ environment }}-nsg"
+
+# NSG rules
+nsg_rules:
+  - name: "AllowSSH"
+    priority: 1000
+    direction: "Inbound"
+    access: "Allow"
+    protocol: "Tcp"
+    source_port_range: "*"
+    destination_port_range: "22"
+    source_address_prefix: "*"
+    destination_address_prefix: "*"
+  - name: "AllowHTTP"
+    priority: 1100
+    direction: "Inbound"
+    access: "Allow"
+    protocol: "Tcp"
+    source_port_range: "*"
+    destination_port_range: "80"
+    source_address_prefix: "*"
+    destination_address_prefix: "*"
+  - name: "AllowHTTPS"
+    priority: 1200
+    direction: "Inbound"
+    access: "Allow"
+    protocol: "Tcp"
+    source_port_range: "*"
+    destination_port_range: "443"
+    source_address_prefix: "*"
+    destination_address_prefix: "*"
+
+# Private endpoint configuration
+create_private_endpoints: false
+private_endpoints: []
+
+# Peering configuration
+create_peerings: false
+peerings: []
+
+# Tags
+vnet_tags: {}

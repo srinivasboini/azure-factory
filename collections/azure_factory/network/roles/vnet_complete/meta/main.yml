@@ -1,0 +1,23 @@
+---
+# Complete VNet Role Meta
+# Metadata for the complete VNet role
+
+galaxy_info:
+  author: Azure Factory Team
+  description: Creates complete Azure VNet setup with subnets and NSG using Azure CLI
+  company: Azure Factory
+  license: MIT
+  min_ansible_version: 2.9
+  platforms:
+    - name: Azure
+      versions:
+        - all
+  galaxy_tags:
+    - azure
+    - vnet
+    - network
+    - nsg
+    - subnet
+    - infrastructure
+
+dependencies: []

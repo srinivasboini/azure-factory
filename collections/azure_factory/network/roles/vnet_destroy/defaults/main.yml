@@ -1,0 +1,11 @@
+---
+# VNet Destroy Role Defaults
+# Default values for the VNet destroy role
+
+vnet_name: "{{ project_name }}-{{ env_name }}-vnet"
+nsg_name: "{{ project_name }}-{{ env_name }}-nsg"
+resource_group_name: "{{ project_name }}-{{ env_name }}-rg"
+resource_group_location: "eastus"
+delete_resource_group: false
+delete_network_watcher: false
+display_destruction_info: true

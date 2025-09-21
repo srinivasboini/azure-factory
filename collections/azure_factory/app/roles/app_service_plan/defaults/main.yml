@@ -1,0 +1,24 @@
+---
+# App Service Plan Role - Default Variables
+# Default values for App Service Plan configuration
+
+# App Service Plan Configuration
+app_service_plan_name: "{{ project_name }}-{{ env_name }}-asp"
+app_service_plan_kind: "Linux"  # Linux or Windows
+app_service_plan_reserved: true  # Required for Linux plans
+
+# SKU Configuration
+sku_name: "B1"  # B1, B2, B3, S1, S2, S3, P1, P2, P3, P1V2, P2V2, P3V2, P1V3, P2V3, P3V3
+sku_tier: "Basic"  # Free, Basic, Standard, Premium, PremiumV2, PremiumV3
+sku_size: "B1"
+sku_capacity: 1
+
+# Tags
+app_service_plan_tags:
+  Project: "{{ project_name }}"
+  Environment: "{{ env_name }}"
+  ManagedBy: "Ansible"
+  ResourceType: "AppServicePlan"
+
+# Display settings
+display_asp_info: true

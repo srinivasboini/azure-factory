@@ -1,0 +1,20 @@
+---
+# Resource Group Role Meta
+# Metadata for the resource group role
+
+galaxy_info:
+  author: Azure Factory Team
+  description: Creates and manages Azure Resource Groups using Azure CLI
+  company: Azure Factory
+  license: MIT
+  min_ansible_version: 2.9
+  platforms:
+    - name: Azure
+      versions:
+        - all
+  galaxy_tags:
+    - azure
+    - resource-group
+    - infrastructure
+
+dependencies: []

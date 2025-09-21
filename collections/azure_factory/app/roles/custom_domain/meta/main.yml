@@ -1,0 +1,20 @@
+---
+# Custom Domain Role - Meta Information
+galaxy_info:
+  author: Azure Factory Team
+  description: Role for configuring custom domains and SSL certificates for Azure Web Apps
+  company: Azure Factory
+  license: MIT
+  min_ansible_version: 2.9
+  platforms:
+    - name: Azure
+      versions:
+        - all
+  galaxy_tags:
+    - azure
+    - webapp
+    - customdomain
+    - ssl
+    - dns
+
+dependencies: []

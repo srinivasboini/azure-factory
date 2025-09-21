@@ -1,0 +1,88 @@
+---
+# VNet Destroy Role Tasks
+# This role destroys Azure VNet and associated resources using Azure CLI commands
+
+- name: Check if resource group exists
+  command: az group show --name {{ resource_group_name }}
+  register: rg_check
+  failed_when: false
+  changed_when: false
+
+- name: Fail if resource group doesn't exist
+  fail:
+    msg: "Resource group {{ resource_group_name }} does not exist"
+  when: rg_check.rc != 0
+
+- name: Check if Virtual Network exists
+  command: az network vnet show --resource-group {{ resource_group_name }} --name {{ vnet_name }}
+  register: vnet_check
+  failed_when: false
+  changed_when: false
+
+- name: Check if Network Security Group exists
+  command: az network nsg show --resource-group {{ resource_group_name }} --name {{ nsg_name }}
+  register: nsg_check
+  failed_when: false
+  changed_when: false
+
+- name: Get VNet subnets
+  command: az network vnet subnet list --resource-group {{ resource_group_name }} --vnet-name {{ vnet_name }} --output json
+  register: subnet_list
+  when: vnet_check.rc == 0
+  changed_when: false
+
+- name: Remove NSG from subnets
+  command: az network vnet subnet update --resource-group {{ resource_group_name }} --vnet-name {{ vnet_name }} --name {{ item.name }} --remove networkSecurityGroup
+  loop: "{{ subnet_list.stdout | from_json }}"
+  when: 
+    - vnet_check.rc == 0
+    - nsg_check.rc == 0
+    - subnet_list is defined
+  register: nsg_removal_results
+  failed_when: false
+
+- name: Delete Network Security Group
+  command: az network nsg delete --resource-group {{ resource_group_name }} --name {{ nsg_name }}
+  when: nsg_check.rc == 0
+  register: nsg_delete_result
+  failed_when: false
+
+- name: Delete Virtual Network
+  command: az network vnet delete --resource-group {{ resource_group_name }} --name {{ vnet_name }}
+  when: vnet_check.rc == 0
+  register: vnet_delete_result
+  failed_when: false
+
+- name: Delete resource group (includes all resources)
+  command: az group delete --name {{ resource_group_name }} --yes --no-wait
+  when: delete_resource_group | default(false)
+  register: rg_delete_result
+  failed_when: false
+
+- name: Check if NetworkWatcher exists
+  command: az network watcher list --query "[?name=='NetworkWatcher_{{ resource_group_location | default('eastus') }}']" --output json
+  register: network_watcher_check
+  failed_when: false
+  changed_when: false
+
+- name: Delete NetworkWatcher
+  command: az resource delete --ids "/subscriptions/{{ azure_account.subscription_id }}/resourceGroups/NetworkWatcherRG/providers/Microsoft.Network/networkWatchers/NetworkWatcher_{{ resource_group_location | default('eastus') }}"
+  when: 
+    - network_watcher_check.stdout != "[]"
+    - delete_network_watcher == true
+  register: network_watcher_delete_result
+  failed_when: false
+
+- name: Display VNet destruction summary
+  debug:
+    msg:
+      - "VNet Destruction Completed Successfully!"
+      - "Resource Group: {{ resource_group_name }}"
+      - "VNet Name: {{ vnet_name }}"
+      - "NSG Name: {{ nsg_name }}"
+      - "VNet Deleted: {{ 'Yes' if vnet_delete_result is defined and vnet_delete_result.changed else 'No (did not exist)' }}"
+      - "NSG Deleted: {{ 'Yes' if nsg_delete_result is defined and nsg_delete_result.changed else 'No (did not exist)' }}"
+      - "Resource Group Deleted: {{ 'Yes' if rg_delete_result is defined and rg_delete_result.changed else 'No' }}"
+      - "NetworkWatcher Deleted: {{ 'Yes' if network_watcher_delete_result is defined and network_watcher_delete_result.changed else 'No (not requested or did not exist)' }}"
+      - "Note: NetworkWatcher may be automatically recreated by Azure for monitoring purposes"
+  when: display_destruction_info | default(true)

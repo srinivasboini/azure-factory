@@ -1,0 +1,18 @@
+namespace: azure_factory
+name: app
+version: 1.0.0
+readme: README.md
+authors:
+  - Azure Factory Team
+description: Azure Factory collection for application resources (App Service, Functions, etc.)
+license_file: LICENSE
+tags:
+  - azure
+  - app
+  - appservice
+  - functions
+dependencies: {}
+repository: https://github.com/your-org/azure-factory
+documentation: https://github.com/your-org/azure-factory
+homepage: https://github.com/your-org/azure-factory
+issues: https://github.com/your-org/azure-factory/issues

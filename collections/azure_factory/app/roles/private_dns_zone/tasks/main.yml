@@ -1,0 +1,78 @@
+---
+# Private DNS Zone Role - Main Tasks
+# This role creates a private DNS zone for Web App private endpoints
+
+- name: Validate required variables
+  fail:
+    msg: "{{ item }} is required but not defined"
+  when: lookup('vars', item) is not defined or lookup('vars', item) == ""
+  loop:
+    - dns_zone_name
+    - resource_group_name
+    - vnet_name
+
+- name: Check if Private DNS Zone already exists
+  azure.azcollection.azure_rm_privatednszone_info:
+    resource_group: "{{ resource_group_name }}"
+    name: "{{ dns_zone_name }}"
+  register: dns_zone_info
+  when: check_mode is not defined or not check_mode
+
+- name: Create Private DNS Zone
+  azure.azcollection.azure_rm_privatednszone:
+    resource_group: "{{ resource_group_name }}"
+    name: "{{ dns_zone_name }}"
+    tags: "{{ dns_zone_tags | default({}) }}"
+    state: present
+  register: dns_zone_result
+  when: dns_zone_info is not defined or dns_zone_info.exists == false
+
+- name: Update Private DNS Zone if it exists
+  azure.azcollection.azure_rm_privatednszone:
+    resource_group: "{{ resource_group_name }}"
+    name: "{{ dns_zone_name }}"
+    tags: "{{ dns_zone_tags | default({}) }}"
+    state: present
+  register: dns_zone_result
+  when: dns_zone_info is defined and dns_zone_info.exists == true
+
+- name: Get VNet information
+  azure.azcollection.azure_rm_virtualnetwork_info:
+    resource_group: "{{ resource_group_name }}"
+    name: "{{ vnet_name }}"
+  register: vnet_info
+
+- name: Check if DNS Zone is linked to VNet
+  azure.azcollection.azure_rm_privatednszone_info:
+    resource_group: "{{ resource_group_name }}"
+    name: "{{ dns_zone_name }}"
+  register: dns_zone_check
+  when: check_mode is not defined or not check_mode
+
+- name: Link Private DNS Zone to VNet
+  azure.azcollection.azure_rm_privatednszone:
+    resource_group: "{{ resource_group_name }}"
+    name: "{{ dns_zone_name }}"
+    virtual_network_links:
+      - name: "{{ dns_zone_name }}-link"
+        virtual_network_id: "{{ vnet_info.virtual_networks[0].id }}"
+        registration_enabled: false
+    tags: "{{ dns_zone_tags | default({}) }}"
+    state: present
+  register: dns_zone_result
+  when: dns_zone_check is defined and dns_zone_check.exists == true
+
+- name: Display Private DNS Zone information
+  debug:
+    msg:
+      - "Private DNS Zone: {{ dns_zone_name }}"
+      - "Resource Group: {{ resource_group_name }}"
+      - "VNet: {{ vnet_name }}"
+      - "Linked: Yes"
+  when: display_dns_info | default(true)
+
+- name: Set Private DNS Zone facts
+  set_fact:
+    dns_zone_id: "{{ dns_zone_result.id }}"
+    dns_zone_resource_group: "{{ resource_group_name }}"
+    dns_zone_name: "{{ dns_zone_name }}"

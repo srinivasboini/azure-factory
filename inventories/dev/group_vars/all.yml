@@ -1,0 +1,56 @@
+---
+# Development Environment Group Variables
+# These variables are specific to the development environment
+
+# Environment-specific settings
+env_name: dev
+project_name: "myapp"
+default_location: "Southeast Asia"
+
+# Resource naming conventions
+resource_prefix: "{{ project_name }}-{{ env_name }}"
+
+# Resource Group Configuration
+resource_group_name: "{{ project_name }}-{{ env_name }}-rg"
+resource_group_location: "{{ default_location }}"
+location: "{{ resource_group_location }}"  # Alias for App Service Plan role
+
+# App Service Plan Configuration
+app_service_plan_name: "{{ project_name }}-{{ env_name }}-asp"
+sku_name: "B1"  # Basic tier - supports private endpoints
+sku_tier: "Basic"
+sku_size: "B1"
+sku_capacity: 1
+app_service_plan_kind: "Linux"  # Linux or Windows
+app_service_plan_reserved: true  # Required for Linux plans
+
+# Subnet Configuration
+delegated_subnet_name: "appservice-delegated"
+non_delegated_subnet_name: "appservice-private"
+delegated_subnet_prefix: "10.0.1.0/24"
+non_delegated_subnet_prefix: "10.0.2.0/24"
+
+# Network settings
+vnet_address_prefix: "10.0.0.0/16"
+enable_ddos_protection: false
+enable_vm_protection: false
+
+# Security settings
+enable_private_endpoints: false
+enable_service_endpoints: true
+enable_nsg_flow_logs: false
+
+# Monitoring settings
+enable_diagnostics: true
+log_retention_days: 30
+
+# Cost optimization
+enable_auto_shutdown: true
+auto_shutdown_time: "19:00"
+
+# Development-specific tags
+environment_tags:
+  Environment: "{{ env_name }}"
+  CostCenter: "Development"
+  Owner: "DevTeam"
+  BackupRequired: "false"

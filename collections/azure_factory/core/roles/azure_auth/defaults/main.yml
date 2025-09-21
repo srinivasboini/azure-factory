@@ -1,0 +1,84 @@
+---
+# Azure Authentication Role Default Variables
+# These variables define default values for Azure authentication
+
+# Azure subscription information
+azure_subscription_id: "{{ lookup('env', 'AZURE_SUBSCRIPTION_ID') | default('') }}"
+azure_tenant_id: "{{ lookup('env', 'AZURE_TENANT_ID') | default('') }}"
+
+# Authentication method: 'cli', 'service_principal', or 'msi'
+azure_auth_method: "{{ lookup('env', 'AZURE_AUTH_METHOD') | default('cli') }}"
+
+# Service Principal credentials (when using service_principal auth)
+azure_client_id: "{{ lookup('env', 'AZURE_CLIENT_ID') | default('') }}"
+azure_secret: "{{ lookup('env', 'AZURE_SECRET') | default('') }}"
+
+# Validation flags
+validate_auth: true
+validate_required_vars: false
+
+# Azure regions mapping
+azure_regions:
+  eastus: "East US"
+  eastus2: "East US 2"
+  westus: "West US"
+  westus2: "West US 2"
+  centralus: "Central US"
+  northcentralus: "North Central US"
+  southcentralus: "South Central US"
+  northeurope: "North Europe"
+  westeurope: "West Europe"
+  southeastasia: "Southeast Asia"
+  eastasia: "East Asia"
+  australiaeast: "Australia East"
+  australiasoutheast: "Australia Southeast"
+  canadacentral: "Canada Central"
+  canadaeast: "Canada East"
+  brazilsouth: "Brazil South"
+  japaneast: "Japan East"
+  japanwest: "Japan West"
+  koreacentral: "Korea Central"
+  koreasouth: "Korea South"
+  indiasouth: "India South"
+  indiacentral: "India Central"
+  indiawest: "India West"
+  chinanorth: "China North"
+  chinaeast: "China East"
+  chinanorth2: "China North 2"
+  chinaeast2: "China East 2"
+  uksouth: "UK South"
+  ukwest: "UK West"
+  francecentral: "France Central"
+  francesouth: "France South"
+  southafricanorth: "South Africa North"
+  southafricawest: "South Africa West"
+  uaenorth: "UAE North"
+  uaecentral: "UAE Central"
+  switzerlandnorth: "Switzerland North"
+  switzerlandwest: "Switzerland West"
+  germanynorth: "Germany North"
+  germanywestcentral: "Germany West Central"
+  norwayeast: "Norway East"
+  norwaywest: "Norway West"
+  swedencentral: "Sweden Central"
+  swedensouth: "Sweden South"
+  polandcentral: "Poland Central"
+  italynorth: "Italy North"
+  israelcentral: "Israel Central"
+  qatarcentral: "Qatar Central"
+  austriaeast: "Austria East"
+  belgiumcentral: "Belgium Central"
+  chilenorth: "Chile North"
+  chilesouth: "Chile South"
+  colombiasouth: "Colombia South"
+  peruwest: "Peru West"
+  argentinasouth: "Argentina South"
+  mexicocentral: "Mexico Central"
+  mexicowest: "Mexico West"
+  canadawest: "Canada West"
+  usgovvirginia: "US Gov Virginia"
+  usgoviowa: "US Gov Iowa"
+  usgovarizona: "US Gov Arizona"
+  usgovtexas: "US Gov Texas"
+  usdodeast: "US DoD East"
+  usdodcentral: "US DoD Central"

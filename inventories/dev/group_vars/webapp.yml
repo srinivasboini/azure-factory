@@ -1,0 +1,141 @@
+---
+# Web App Deployment Group Variables - Development Environment
+# These variables are specific to the development env_name for Web App deployment
+
+# Environment-specific settings
+env_name: dev
+project_name: "myapp"
+default_location: "Southeast Asia"
+
+# Resource naming conventions
+resource_prefix: "{{ project_name }}-{{ env_name }}"
+
+# Azure Authentication (use env_name variables or Ansible Vault)
+azure_subscription_id: "{{ lookup('env', 'AZURE_SUBSCRIPTION_ID') | default('') }}"
+azure_tenant_id: "{{ lookup('env', 'AZURE_TENANT_ID') | default('') }}"
+azure_auth_method: "{{ lookup('env', 'AZURE_AUTH_METHOD') | default('cli') }}"
+
+# Resource Group Configuration
+resource_group_name: "{{ project_name }}-{{ env_name }}-rg"
+resource_group_location: "{{ default_location }}"
+location: "{{ resource_group_location }}"  # Alias for App Service Plan role
+
+# Network Configuration
+vnet_name: "{{ project_name }}-{{ env_name }}-vnet"
+vnet_address_prefix: "10.0.0.0/16"
+
+# Subnet Configuration
+delegated_subnet_name: "appservice-delegated"
+non_delegated_subnet_name: "appservice-private"
+delegated_subnet_prefix: "10.0.1.0/24"
+non_delegated_subnet_prefix: "10.0.2.0/24"
+
+# App Service Plan Configuration
+app_service_plan_name: "{{ project_name }}-{{ env_name }}-asp"
+sku_name: "B1"  # Basic tier - supports private endpoints
+sku_tier: "Basic"
+sku_size: "B1"
+sku_capacity: 1
+app_service_plan_kind: "Linux"  # Linux or Windows
+app_service_plan_reserved: true  # Required for Linux plans
+
+# Web App Configuration
+webapp_name: "{{ project_name }}-{{ env_name }}-webapp"
+webapp_framework: "python"  # python, node, dotnet, java, php
+webapp_framework_version: "3.9"  # Version of the framework
+
+# Web App App Settings
+webapp_app_settings:
+  WEBSITES_ENABLE_APP_SERVICE_STORAGE: "false"
+  WEBSITES_PORT: "8000"
+  SCM_DO_BUILD_DURING_DEPLOYMENT: "true"
+  # Add your custom app settings here
+  # APP_SETTING_KEY: "value"
+
+# Private Endpoint Configuration (enabled for Basic tier)
+enable_private_endpoint: true  # Enabled for Basic tier
+private_endpoint_name: "{{ project_name }}-{{ env_name }}-pe"
+
+# User Assigned Managed Identity Configuration
+enable_user_assigned_identity: true  # Enable UAMI for the webapp
+user_assigned_identity_name: "{{ project_name }}-{{ env_name }}-uami"
+user_assigned_identity_tags:
+  Project: "{{ project_name }}"
+  Environment: "{{ env_name }}"
+  ManagedBy: "Ansible"
+  ResourceType: "UserAssignedIdentity"
+private_endpoint_group_ids: ["sites"]  # For Web App, use "sites"
+
+# Private DNS Zone Configuration
+dns_zone_name: "privatelink.azurewebsites.net"  # Standard zone for Web App private endpoints
+
+# Custom Domain Configuration
+custom_domain_name: ""  # Empty to use default Azure domain
+create_dns_zone: false  # Set to true if you want to create DNS zone
+create_ssl_certificate: false  # Set to true if you want to create SSL certificate
+
+# SSL Certificate Configuration (use Ansible Vault for production)
+ssl_cert_path: ""  # Path to SSL certificate file
+ssl_cert_password: ""  # Password for SSL certificate
+domain_verification_token: ""  # Token for domain verification
+
+# NSG Configuration
+nsg_name: "{{ project_name }}-{{ env_name }}-nsg"
+nsg_rules:
+  - name: "AllowHTTPS"
+    priority: 1000
+    direction: "Inbound"
+    access: "Allow"
+    protocol: "Tcp"
+    source_port_range: "*"
+    destination_port_range: "443"
+    source_address_prefix: "*"
+    destination_address_prefix: "*"
+  - name: "AllowHTTP"
+    priority: 1100
+    direction: "Inbound"
+    access: "Allow"
+    protocol: "Tcp"
+    source_port_range: "*"
+    destination_port_range: "80"
+    source_address_prefix: "*"
+    destination_address_prefix: "*"
+
+# Security settings
+enable_ddos_protection: false
+enable_vm_protection: false
+enable_service_endpoints: true
+enable_nsg_flow_logs: false
+
+# Monitoring settings
+enable_diagnostics: true
+log_retention_days: 30
+
+# Cost optimization
+enable_auto_shutdown: true
+auto_shutdown_time: "19:00"
+
+# Validation settings
+validate_env_vars: true
+validate_auth: true
+
+# Display settings
+display_rg_info: true
+display_vnet_info: true
+display_asp_info: true
+display_webapp_info: true
+display_pe_info: true
+display_dns_info: true
+display_domain_info: true
+
+# Output settings
+save_deployment_info: false
+
+# Development-specific tags
+env_name_tags:
+  Environment: "{{ env_name }}"
+  CostCenter: "Development"
+  Owner: "DevTeam"
+  BackupRequired: "false"
+  Project: "{{ project_name }}"
+  ManagedBy: "Ansible"
