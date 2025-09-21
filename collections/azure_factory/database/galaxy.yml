@@ -4,14 +4,17 @@ version: 1.0.0
 readme: README.md
 authors:
   - Azure Factory Team
-description: Azure Factory collection for database resources (SQL Server, PostgreSQL, etc.)
+description: Database services collection for PostgreSQL Flexible Server using Azure CLI commands only
 license_file: LICENSE
 tags:
   - azure
   - database
-  - sql
   - postgresql
-dependencies: {}
+  - flexible-server
+  - azure-cli
+dependencies:
+  azure_factory.core: ">=1.0.0"
+  azure_factory.network: ">=1.0.0"
 repository: https://github.com/your-org/azure-factory
 documentation: https://github.com/your-org/azure-factory
 homepage: https://github.com/your-org/azure-factory

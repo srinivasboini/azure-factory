@@ -1,0 +1,107 @@
+---
+# Azure PostgreSQL Flexible Server Destroy Playbook
+# This playbook destroys PostgreSQL Flexible Server resources using ONLY Azure CLI commands
+# Use this to clean up PostgreSQL after testing
+
+- name: Destroy Azure PostgreSQL Flexible Server Resources
+  hosts: azure_dev
+  connection: local
+  gather_facts: false
+  
+  vars: {}
+  
+  pre_tasks:
+    - name: Display PostgreSQL destruction information
+      debug:
+        msg:
+          - "🗑️ Starting Azure PostgreSQL Flexible Server Resources Destruction"
+          - "Resource Group: {{ resource_group_name }}"
+          - "PostgreSQL Server: {{ postgresql_server_name }}"
+          - "Private Endpoint: {{ private_endpoint_name | default('N/A') }}"
+          - "Private DNS Zone: {{ private_dns_zone_name | default('N/A') }}"
+          - ""
+          - "⚠️ WARNING: This will permanently delete the PostgreSQL server and all data!"
+          - "Press Ctrl+C to cancel, or wait 5 seconds to continue..."
+    
+    - name: Wait for confirmation
+      pause:
+        seconds: 5
+    
+    - name: Check if Azure CLI is logged in
+      command: az account show
+      register: azure_login_check
+      failed_when: false
+      changed_when: false
+    
+    - name: Fail if not logged in to Azure CLI
+      fail:
+        msg: "Not logged in to Azure CLI. Please run 'az login' first."
+      when: azure_login_check.rc != 0
+  
+  tasks:
+    # Step 1: Delete Private Endpoint using Azure CLI
+    - name: Check if Private Endpoint exists
+      command: az network private-endpoint show --resource-group "{{ resource_group_name }}" --name "{{ private_endpoint_name }}"
+      register: private_endpoint_check
+      failed_when: false
+      changed_when: false
+    
+    - name: Delete Private Endpoint using Azure CLI
+      command: az network private-endpoint delete --resource-group "{{ resource_group_name }}" --name "{{ private_endpoint_name }}"
+      when: private_endpoint_check.rc == 0
+      register: private_endpoint_delete_result
+    
+    - name: Display Private Endpoint deletion status
+      debug:
+        msg: "Private Endpoint '{{ private_endpoint_name }}': {{ 'Deleted' if private_endpoint_check.rc == 0 else 'Not found' }}"
+    
+    # Step 2: Delete Private DNS Zone using Azure CLI
+    - name: Check if Private DNS Zone exists
+      command: az network private-dns zone show --resource-group "{{ resource_group_name }}" --name "{{ private_dns_zone_name }}"
+      register: dns_zone_check
+      failed_when: false
+      changed_when: false
+    
+    - name: Delete Private DNS Zone using Azure CLI
+      command: az network private-dns zone delete --resource-group "{{ resource_group_name }}" --name "{{ private_dns_zone_name }}"
+      when: dns_zone_check.rc == 0
+      register: dns_zone_delete_result
+    
+    - name: Display Private DNS Zone deletion status
+      debug:
+        msg: "Private DNS Zone '{{ private_dns_zone_name }}': {{ 'Deleted' if dns_zone_check.rc == 0 else 'Not found' }}"
+    
+    # Step 3: Delete PostgreSQL Flexible Server using Azure CLI
+    - name: Check if PostgreSQL Flexible Server exists
+      command: az postgres flexible-server show --resource-group "{{ resource_group_name }}" --name "{{ postgresql_server_name }}"
+      register: postgresql_check
+      failed_when: false
+      changed_when: false
+    
+    - name: Delete PostgreSQL Flexible Server using Azure CLI
+      command: az postgres flexible-server delete --resource-group "{{ resource_group_name }}" --name "{{ postgresql_server_name }}" --yes
+      when: postgresql_check.rc == 0
+      register: postgresql_delete_result
+    
+    - name: Display PostgreSQL server deletion status
+      debug:
+        msg: "PostgreSQL Flexible Server '{{ postgresql_server_name }}': {{ 'Deleted' if postgresql_check.rc == 0 else 'Not found' }}"
+    
+    # Step 4: Verify cleanup
+    - name: Check if PostgreSQL server still exists
+      command: az postgres flexible-server show --resource-group "{{ resource_group_name }}" --name "{{ postgresql_server_name }}"
+      register: postgresql_final_check
+      failed_when: false
+      changed_when: false
+    
+    - name: Display final PostgreSQL cleanup status
+      debug:
+        msg:
+          - "🎉 PostgreSQL Flexible Server Destruction Completed!"
+          - "PostgreSQL Server: {{ postgresql_server_name }}"
+          - "Status: {{ 'Deleted' if postgresql_final_check.rc != 0 else 'Still exists' }}"
+          - "Private Endpoint: {{ 'Deleted' if private_endpoint_check.rc == 0 else 'Not found' }}"
+          - "Private DNS Zone: {{ 'Deleted' if dns_zone_check.rc == 0 else 'Not found' }}"
+          - ""
+          - "PostgreSQL resources have been cleaned up!"
+          - "Note: Infrastructure resources (VNet, Resource Group) are still available"

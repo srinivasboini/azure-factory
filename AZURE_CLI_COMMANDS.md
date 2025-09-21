@@ -7,12 +7,13 @@
 4. [Network Security Group Management](#network-security-group-management)
 5. [App Service Management](#app-service-management)
 6. [Web App Management](#web-app-management)
-7. [Managed Identity Management](#managed-identity-management)
-8. [Private Endpoint Management](#private-endpoint-management)
-9. [DNS Zone Management](#dns-zone-management)
-10. [Resource Management](#resource-management)
-11. [Monitoring & Diagnostics](#monitoring--diagnostics)
-12. [Troubleshooting Commands](#troubleshooting-commands)
+7. [PostgreSQL Flexible Server Management](#postgresql-flexible-server-management)
+8. [Managed Identity Management](#managed-identity-management)
+9. [Private Endpoint Management](#private-endpoint-management)
+10. [DNS Zone Management](#dns-zone-management)
+11. [Resource Management](#resource-management)
+12. [Monitoring & Diagnostics](#monitoring--diagnostics)
+13. [Troubleshooting Commands](#troubleshooting-commands)
 
 ## Authentication & Account Management
 
@@ -277,6 +278,120 @@ az webapp show --resource-group "myapp-dev-rg" --name "myapp-dev-webapp" --query
 
 # Delete Web App
 az webapp delete --resource-group "myapp-dev-rg" --name "myapp-dev-webapp"
+```
+
+## PostgreSQL Flexible Server Management
+
+### PostgreSQL Flexible Server Operations
+```bash
+# Create PostgreSQL Flexible Server
+az postgres flexible-server create --resource-group <rg-name> --name <server-name> --admin-user <admin-username> --admin-password <admin-password> --version <version> --sku-name <sku-name> --tier <tier> --storage-size <storage-size> --backup-retention <retention-days> --location <location> --public-access <enabled/disabled> --ssl-enforcement <enabled/disabled> --minimal-tls-version <tls-version> --geo-redundant-backup <enabled/disabled> --high-availability <enabled/disabled> --zone <zone-number> --tags <tags>
+
+# Show PostgreSQL Flexible Server
+az postgres flexible-server show --resource-group <rg-name> --name <server-name>
+
+# List PostgreSQL Flexible Servers
+az postgres flexible-server list --resource-group <rg-name> --output table
+
+# Update PostgreSQL Flexible Server
+az postgres flexible-server update --resource-group <rg-name> --name <server-name> --sku-name <new-sku> --storage-size <new-size>
+
+# Delete PostgreSQL Flexible Server
+az postgres flexible-server delete --resource-group <rg-name> --name <server-name> --yes
+
+# Check if PostgreSQL Flexible Server exists
+az postgres flexible-server show --resource-group <rg-name> --name <server-name> --query "name" -o tsv 2>/dev/null || echo "Not found"
+```
+
+### PostgreSQL Database Operations
+```bash
+# Create database
+az postgres flexible-server db create --resource-group <rg-name> --server-name <server-name> --database-name <db-name> --charset <charset> --collation <collation>
+
+# Show database
+az postgres flexible-server db show --resource-group <rg-name> --server-name <server-name> --database-name <db-name>
+
+# List databases
+az postgres flexible-server db list --resource-group <rg-name> --server-name <server-name> --output table
+
+# Delete database
+az postgres flexible-server db delete --resource-group <rg-name> --server-name <server-name> --database-name <db-name> --yes
+
+# Check if database exists
+az postgres flexible-server db show --resource-group <rg-name> --server-name <server-name> --database-name <db-name> --query "name" -o tsv 2>/dev/null || echo "Not found"
+```
+
+### PostgreSQL Firewall Rules Operations
+```bash
+# Create firewall rule
+az postgres flexible-server firewall-rule create --resource-group <rg-name> --name <server-name> --rule-name <rule-name> --start-ip-address <start-ip> --end-ip-address <end-ip>
+
+# Show firewall rule
+az postgres flexible-server firewall-rule show --resource-group <rg-name> --name <server-name> --rule-name <rule-name>
+
+# List firewall rules
+az postgres flexible-server firewall-rule list --resource-group <rg-name> --name <server-name> --output table
+
+# Update firewall rule
+az postgres flexible-server firewall-rule update --resource-group <rg-name> --name <server-name> --rule-name <rule-name> --start-ip-address <new-start-ip> --end-ip-address <new-end-ip>
+
+# Delete firewall rule
+az postgres flexible-server firewall-rule delete --resource-group <rg-name> --name <server-name> --rule-name <rule-name>
+```
+
+### PostgreSQL Configuration Parameters
+```bash
+# Set configuration parameter
+az postgres flexible-server parameter set --resource-group <rg-name> --server-name <server-name> --name <parameter-name> --value <parameter-value>
+
+# Show configuration parameter
+az postgres flexible-server parameter show --resource-group <rg-name> --server-name <server-name> --name <parameter-name>
+
+# List configuration parameters
+az postgres flexible-server parameter list --resource-group <rg-name> --server-name <server-name> --output table
+
+# Reset configuration parameter
+az postgres flexible-server parameter reset --resource-group <rg-name> --server-name <server-name> --name <parameter-name>
+```
+
+### PostgreSQL Azure AD Authentication
+```bash
+# Create Azure AD admin
+az postgres flexible-server ad-admin create --resource-group <rg-name> --server-name <server-name> --display-name <display-name> --object-id <object-id> --tenant-id <tenant-id>
+
+# Show Azure AD admin
+az postgres flexible-server ad-admin show --resource-group <rg-name> --server-name <server-name>
+
+# List Azure AD admins
+az postgres flexible-server ad-admin list --resource-group <rg-name> --server-name <server-name> --output table
+
+# Delete Azure AD admin
+az postgres flexible-server ad-admin delete --resource-group <rg-name> --server-name <server-name> --object-id <object-id>
+```
+
+### Examples
+```bash
+# Create minimal PostgreSQL Flexible Server for development
+az postgres flexible-server create --resource-group "myapp-dev-rg" --name "myapp-dev-postgres" --admin-user "postgresadmin" --admin-password "MySecurePassword123!" --version "15" --sku-name "B_Standard_B1ms" --tier "Burstable" --storage-size 32 --backup-retention 7 --location "Southeast Asia" --public-access "Disabled" --ssl-enforcement "Enabled" --minimal-tls-version "TLS1_2" --geo-redundant-backup "Disabled" --high-availability "Disabled" --zone "1" --tags "Project=myapp" "Environment=dev"
+
+# Create database
+az postgres flexible-server db create --resource-group "myapp-dev-rg" --server-name "myapp-dev-postgres" --database-name "myapp_dev_db" --charset "UTF8" --collation "en_US.UTF8"
+
+# Create firewall rule for Azure services
+az postgres flexible-server firewall-rule create --resource-group "myapp-dev-rg" --name "myapp-dev-postgres" --rule-name "AllowAzureServices" --start-ip-address "0.0.0.0" --end-ip-address "0.0.0.0"
+
+# Set performance parameters
+az postgres flexible-server parameter set --resource-group "myapp-dev-rg" --server-name "myapp-dev-postgres" --name "shared_preload_libraries" --value "pg_stat_statements"
+az postgres flexible-server parameter set --resource-group "myapp-dev-rg" --server-name "myapp-dev-postgres" --name "max_connections" --value "100"
+
+# Create Azure AD admin using UAMI
+az postgres flexible-server ad-admin create --resource-group "myapp-dev-rg" --server-name "myapp-dev-postgres" --display-name "myapp-dev-uami" --object-id "12345678-1234-1234-1234-123456789012" --tenant-id "87654321-4321-4321-4321-210987654321"
+
+# Check PostgreSQL server exists
+az postgres flexible-server show --resource-group "myapp-dev-rg" --name "myapp-dev-postgres" --query "name" -o tsv 2>/dev/null || echo "PostgreSQL server not found"
+
+# Delete PostgreSQL server
+az postgres flexible-server delete --resource-group "myapp-dev-rg" --name "myapp-dev-postgres" --yes
 ```
 
 ## Managed Identity Management

@@ -1,0 +1,97 @@
+---
+# PostgreSQL Flexible Server Role Default Variables
+# These variables define default values for PostgreSQL Flexible Server deployment using Azure CLI commands only
+
+# PostgreSQL Server Configuration
+postgresql_server_name: "{{ project_name }}-{{ env_name }}-postgres"
+postgresql_admin_username: "postgresadmin"
+postgresql_admin_password: ""  # Must be provided via Ansible Vault
+postgresql_version: "15"  # Supported versions: 13, 14, 15, 16
+postgresql_sku_name: "B_Standard_B1ms"  # Minimal pricing tier for development
+postgresql_tier: "Burstable"  # Burstable, GeneralPurpose, MemoryOptimized
+postgresql_storage_size: 32  # Minimum storage size in GB
+postgresql_backup_retention: 7  # Backup retention in days
+postgresql_geo_redundant_backup: false  # Disable for cost optimization
+postgresql_high_availability: false  # Disable for cost optimization
+postgresql_zone: "1"  # Availability zone
+postgresql_public_access: false  # Private access only
+postgresql_ssl_enforcement: true  # Enable SSL enforcement
+postgresql_minimal_tls_version: "TLS1_2"  # Minimum TLS version
+
+# Database Configuration
+postgresql_databases:
+  - name: "{{ project_name }}_{{ env_name }}_db"
+    charset: "UTF8"
+    collation: "en_US.UTF8"
+
+# Firewall Rules Configuration
+postgresql_firewall_rules:
+  - name: "AllowAzureServices"
+    start_ip: "0.0.0.0"
+    end_ip: "0.0.0.0"
+    description: "Allow Azure services to access the server"
+
+# Network Configuration
+enable_private_endpoint: true
+private_endpoint_name: "{{ project_name }}-{{ env_name }}-postgres-pe"
+private_endpoint_subnet: "database"  # Use existing database subnet
+private_endpoint_group_ids: ["postgresqlServer"]  # PostgreSQL group ID
+
+# Private DNS Zone Configuration
+enable_private_dns_zone: true
+private_dns_zone_name: "privatelink.postgres.database.azure.com"
+private_dns_record_name: "{{ postgresql_server_name }}"
+
+# UAMI Integration Configuration
+enable_uami_integration: true
+uami_name: "{{ project_name }}-{{ env_name }}-uami"  # Use existing UAMI
+uami_resource_id: ""  # Will be populated from existing UAMI
+
+# PostgreSQL Performance Configuration
+postgresql_performance_tuning:
+  shared_preload_libraries: "pg_stat_statements"
+  max_connections: 100
+  shared_buffers: "256MB"
+  effective_cache_size: "1GB"
+  maintenance_work_mem: "64MB"
+  checkpoint_completion_target: 0.9
+  wal_buffers: "16MB"
+  default_statistics_target: 100
+
+# PostgreSQL Monitoring Configuration
+enable_monitoring: true
+log_retention_days: 30
+
+# Cost Optimization Settings
+cost_optimization:
+  auto_pause_delay: 60  # Auto-pause after 60 minutes of inactivity
+  auto_pause_enabled: true  # Enable auto-pause for dev environments
+  storage_autogrow: false  # Disable storage autogrow
+  backup_redundancy: "Local"  # Use local redundancy
+
+# Validation Settings
+validate_postgresql_config: true
+validate_network_config: true
+validate_uami_config: true
+
+# Display Settings
+display_postgresql_info: true
+display_private_endpoint_info: true
+display_dns_info: true
+display_uami_info: true
+
+# Output Settings
+save_postgresql_info: false
+postgresql_info_file: "./postgresql-deployment-summary-{{ project_name }}-{{ env_name }}.txt"
+
+# Environment-specific Tags
+postgresql_tags:
+  Project: "{{ project_name }}"
+  Environment: "{{ env_name }}"
+  ManagedBy: "Ansible"
+  ResourceType: "PostgreSQLFlexibleServer"
+  CostCenter: "{{ 'Development' if env_name == 'dev' else 'Production' }}"
+  BackupRequired: "{{ 'true' if env_name == 'prod' else 'false' }}"
+  MonitoringEnabled: "true"
+  PrivateAccess: "true"
+  UAMIEnabled: "true"

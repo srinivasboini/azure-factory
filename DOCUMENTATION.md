@@ -3,13 +3,14 @@
 ## Table of Contents
 1. [Project Overview](#project-overview)
 2. [Architecture](#architecture)
-3. [Prerequisites](#prerequisites)
-4. [Setup Instructions](#setup-instructions)
-5. [Deployment Guide](#deployment-guide)
-6. [Configuration](#configuration)
-7. [Troubleshooting](#troubleshooting)
-8. [Best Practices](#best-practices)
-9. [Maintenance](#maintenance)
+3. [🏗️ Complete Infrastructure Architecture](#️-complete-infrastructure-architecture)
+4. [Prerequisites](#prerequisites)
+5. [Setup Instructions](#setup-instructions)
+6. [Deployment Guide](#deployment-guide)
+7. [Configuration](#configuration)
+8. [Troubleshooting](#troubleshooting)
+9. [Best Practices](#best-practices)
+10. [Maintenance](#maintenance)
 
 ## Project Overview
 
@@ -48,12 +49,202 @@ azure-factory/
 ├── collections/azure_factory/          # Ansible collections
 │   ├── app/                           # Application-related roles
 │   ├── core/                          # Core infrastructure roles
-│   └── network/                       # Network-related roles
+│   ├── network/                       # Network-related roles
+│   └── database/                      # Database-related roles
 ├── inventories/                        # Environment configurations
 │   └── dev/                          # Development environment
 ├── playbooks/                         # Deployment playbooks
 ├── ansible-env/                       # Python virtual environment
 └── DOCUMENTATION.md                   # This file
+```
+
+## 🏗️ Complete Infrastructure Architecture
+
+### Network Topology
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Azure Resource Group                         │
+│                    myapp-dev-rg                                │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │                Virtual Network                          │   │
+│  │                myapp-dev-vnet                           │   │
+│  │                Address Space: 10.0.0.0/16              │   │
+│  │                                                         │   │
+│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐     │   │
+│  │  │ App Service │ │ App Service │ │ Frontend    │     │   │
+│  │  │ Delegated   │ │ Private     │ │ Subnet      │     │   │
+│  │  │ 10.0.1.0/24 │ │ 10.0.2.0/24 │ │ 10.0.3.0/24 │     │   │
+│  │  └─────────────┘ └─────────────┘ └─────────────┘     │   │
+│  │                                                         │   │
+│  │  ┌─────────────┐ ┌─────────────┐                      │   │
+│  │  │ Backend     │ │ Database    │                      │   │
+│  │  │ Subnet      │ │ Subnet      │                      │   │
+│  │  │ 10.0.4.0/24 │ │ 10.0.5.0/24 │ ← PostgreSQL PE      │   │
+│  │  └─────────────┘ └─────────────┘                      │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                               │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │              App Service Plan                           │   │
+│  │              myapp-dev-asp (B1)                         │   │
+│  │                                                         │   │
+│  │  ┌─────────────────────────────────────────────────┐   │   │
+│  │  │              Web App                            │   │   │
+│  │  │              myapp-dev-webapp                   │   │   │
+│  │  │              + UAMI: myapp-dev-uami              │   │   │
+│  │  │              + Private Endpoint                 │   │   │
+│  │  └─────────────────────────────────────────────────┘   │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                               │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │              PostgreSQL Flexible Server                │   │
+│  │              myapp-dev-postgres                        │   │
+│  │              SKU: B_Standard_B1ms                      │   │
+│  │              Version: 15                                │   │
+│  │                                                         │   │
+│  │  ┌─────────────────────────────────────────────────┐   │   │
+│  │  │              Private Endpoint                    │   │   │
+│  │  │              myapp-dev-postgres-pe               │   │   │
+│  │  │              + Private DNS Zone                  │   │   │
+│  │  │              + Azure AD Admin (UAMI)              │   │   │
+│  │  └─────────────────────────────────────────────────┘   │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Strategic Architecture Decisions
+
+#### 🔐 UAMI Integration Strategy
+**Why Same UAMI as Webapp?**
+- **Single Identity Model**: One UAMI manages both webapp and database access
+- **Principle of Least Privilege**: Same identity, same permissions scope
+- **Simplified Access Control**: No need to manage multiple identities
+- **Audit Trail**: Single identity for all application-database interactions
+- **Seamless Connection**: Webapp can authenticate to PostgreSQL using the same UAMI
+- **No Password Management**: Eliminates need for database passwords in webapp
+- **Azure AD Integration**: Both services use Azure AD authentication
+- **Token-based Access**: Secure, token-based authentication
+
+#### 🌐 Network Architecture Strategy
+**Database Subnet Selection (`10.0.5.0/24`):**
+- **Purpose-Built**: Already designed for database services
+- **Service Endpoints**: Has `Microsoft.Sql` and `Microsoft.Storage` endpoints
+- **Network Isolation**: Dedicated subnet for database traffic
+- **Future-Proof**: Ready for additional databases (Redis, MongoDB, etc.)
+
+**Network Flow:**
+```
+Webapp (10.0.1.0/24) → Private Endpoint → PostgreSQL (10.0.5.0/24)
+```
+
+#### 🗄️ PostgreSQL Version Strategy
+**Why PostgreSQL Version 15?**
+- **Long-term Support**: 3+ years of support remaining (EOL November 2027)
+- **Azure Compatibility**: Well-tested and stable on Azure
+- **Feature Rich**: JSON improvements, performance enhancements
+- **Production Ready**: Battle-tested in enterprise environments
+- **Cost Effective**: No bleeding-edge risks
+
+#### 💰 Cost Optimization Strategy
+**Minimal Pricing Tier Selection:**
+- **SKU**: `B_Standard_B1ms` (Burstable tier)
+- **Storage**: 32GB minimum
+- **Backup**: 7 days retention
+- **No HA**: Disabled for cost optimization
+- **No Geo-Redundancy**: Disabled for cost savings
+- **Auto-pause**: Enabled for dev environments
+
+### Deployment Flow Strategy
+
+#### Phase 1: Infrastructure Deployment
+```bash
+ansible-playbook -i inventories/dev playbooks/deploy_infrastructure.yml
+```
+**Creates:**
+- Resource Group (`myapp-dev-rg`)
+- Virtual Network (`myapp-dev-vnet`)
+- Subnets (appservice-delegated, appservice-private, frontend, backend, database)
+- Network Security Group (`myapp-dev-nsg`)
+- App Service Plan (`myapp-dev-asp`)
+
+#### Phase 2: Web Application Deployment
+```bash
+ansible-playbook -i inventories/dev playbooks/deploy_webapp_only.yml
+```
+**Creates:**
+- Web App (`myapp-dev-webapp`)
+- User Assigned Managed Identity (`myapp-dev-uami`)
+- Private Endpoint for Web App
+- Private DNS Zone (`privatelink.azurewebsites.net`)
+
+#### Phase 3: Database Deployment
+```bash
+ansible-playbook -i inventories/dev playbooks/deploy_postgresql.yml
+```
+**Creates:**
+- PostgreSQL Flexible Server (`myapp-dev-postgres`)
+- Private Endpoint for PostgreSQL
+- Private DNS Zone (`privatelink.postgres.database.azure.com`)
+- Azure AD Admin configuration using existing UAMI
+- Databases (`myapp_dev_db`, `myapp_dev_test_db`)
+
+### Security Architecture
+
+#### Network Security
+- **Private Access Only**: No public internet access
+- **VNet Integration**: All traffic stays within Azure backbone
+- **NSG Rules**: Restrictive firewall rules
+- **Private DNS**: Internal name resolution
+
+#### Authentication Security
+- **UAMI**: Passwordless authentication
+- **Azure AD**: Enterprise-grade identity
+- **SSL/TLS**: Encrypted connections (TLS 1.2 minimum)
+- **Token-based**: Automatic rotation
+
+#### Database Security
+- **Private Endpoints**: Database accessible only through VNet
+- **Firewall Rules**: Restrictive access policies
+- **SSL Enforcement**: All connections encrypted
+- **Azure AD Authentication**: No password-based authentication
+
+### Performance & Monitoring
+
+#### Built-in Monitoring
+- **Query Performance**: `pg_stat_statements` extension enabled
+- **Connection Monitoring**: Max 100 connections
+- **Memory Optimization**: Shared buffers and cache configuration
+- **Log Retention**: 30 days log retention
+
+#### Future Enhancements
+- **Azure Monitor**: Application Insights integration
+- **Log Analytics**: Centralized logging
+- **Metrics**: Performance monitoring
+- **Alerts**: Proactive monitoring
+
+### Multi-Database Support
+```yaml
+postgresql_databases:
+  - name: "myapp_dev_db"      # Main application database
+  - name: "myapp_dev_test_db" # Testing database
+  # Future: analytics_db, logs_db, cache_db
+```
+
+### Connection Information
+**Public Connection:**
+```bash
+psql -h myapp-dev-postgres.postgres.database.azure.com -U postgresadmin -d myapp_dev_db
+```
+
+**Private Connection (Recommended):**
+```bash
+psql -h myapp-dev-postgres.privatelink.postgres.database.azure.com -U postgresadmin -d myapp_dev_db
+```
+
+**UAMI-based Connection (Most Secure):**
+```bash
+# Using Azure AD authentication with UAMI
+psql -h myapp-dev-postgres.privatelink.postgres.database.azure.com -U myapp-dev-uami@myapp-dev-postgres -d myapp_dev_db
 ```
 
 ## Prerequisites
@@ -142,7 +333,7 @@ ansible-playbook -i inventories/dev playbooks/deploy_webapp_only.yml
 ```
 
 ### Complete Deployment
-Deploy both infrastructure and web application:
+Deploy infrastructure, web application, and PostgreSQL database:
 
 ```bash
 # Deploy infrastructure first
@@ -150,16 +341,33 @@ ansible-playbook -i inventories/dev playbooks/deploy_infrastructure.yml
 
 # Then deploy web application
 ansible-playbook -i inventories/dev playbooks/deploy_webapp_only.yml
+
+# Finally deploy PostgreSQL database
+ansible-playbook -i inventories/dev playbooks/deploy_postgresql.yml --ask-vault-pass
+```
+
+### PostgreSQL Database Deployment
+Deploy PostgreSQL Flexible Server with private endpoints and UAMI integration:
+
+```bash
+# Encrypt the vault file first (one-time setup)
+ansible-vault encrypt inventories/dev/group_vars/vault_postgresql.yml
+
+# Deploy PostgreSQL
+ansible-playbook -i inventories/dev playbooks/deploy_postgresql.yml --ask-vault-pass
 ```
 
 ### Destruction
 Clean up resources in the correct order:
 
 ```bash
-# Destroy web application first
+# Destroy PostgreSQL database first
+ansible-playbook -i inventories/dev playbooks/destroy_postgresql.yml
+
+# Destroy web application
 ansible-playbook -i inventories/dev playbooks/destroy_webapp_only.yml
 
-# Then destroy infrastructure
+# Finally destroy infrastructure
 ansible-playbook -i inventories/dev playbooks/destroy_infrastructure.yml
 ```
 
@@ -216,6 +424,51 @@ delegated_subnet_name: "appservice-delegated"
 non_delegated_subnet_name: "appservice-private"
 delegated_subnet_prefix: "10.0.1.0/24"
 non_delegated_subnet_prefix: "10.0.2.0/24"
+```
+
+### PostgreSQL Database Configuration
+Edit `inventories/dev/group_vars/postgresql.yml` for database settings:
+
+```yaml
+# PostgreSQL Server settings
+postgresql_server_name: "{{ project_name }}-{{ env_name }}-postgres"
+postgresql_admin_username: "postgresadmin"
+postgresql_admin_password: "{{ vault_postgresql_password }}"
+postgresql_version: "15"
+postgresql_sku_name: "B_Standard_B1ms"  # Minimal pricing tier
+postgresql_tier: "Burstable"
+postgresql_storage_size: 32
+postgresql_backup_retention: 7
+
+# Database configuration
+postgresql_databases:
+  - name: "{{ project_name }}_{{ env_name }}_db"
+    charset: "UTF8"
+    collation: "en_US.UTF8"
+  - name: "{{ project_name }}_{{ env_name }}_test_db"
+    charset: "UTF8"
+    collation: "en_US.UTF8"
+
+# UAMI integration
+enable_uami_integration: true
+uami_name: "{{ project_name }}-{{ env_name }}-uami"
+
+# Private endpoint configuration
+enable_private_endpoint: true
+private_endpoint_subnet: "database"
+```
+
+### PostgreSQL Secrets Configuration
+Edit `inventories/dev/group_vars/vault_postgresql.yml` for database secrets:
+
+```yaml
+# PostgreSQL Admin Password (encrypted with Ansible Vault)
+vault_postgresql_password: "MySecurePostgresPassword123!"
+```
+
+**Important**: Always encrypt the vault file:
+```bash
+ansible-vault encrypt inventories/dev/group_vars/vault_postgresql.yml
 ```
 
 ## Troubleshooting

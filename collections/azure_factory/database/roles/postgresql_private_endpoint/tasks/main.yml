@@ -1,0 +1,141 @@
+---
+# PostgreSQL Private Endpoint Role Tasks
+# This role creates private endpoints and DNS zones for PostgreSQL Flexible Server using ONLY Azure CLI commands
+
+- name: Validate required variables
+  fail:
+    msg: "{{ item }} is required but not defined"
+  when: 
+    - item is not defined or item == ""
+    - validate_network_config | default(true)
+  loop:
+    - postgresql_server_name
+    - resource_group_name
+    - vnet_name
+    - private_endpoint_subnet
+
+- name: Get PostgreSQL server resource ID using Azure CLI
+  command: az postgres flexible-server show --resource-group "{{ resource_group_name }}" --name "{{ postgresql_server_name }}"
+  register: postgresql_server_info
+  changed_when: false
+
+- name: Set PostgreSQL server resource ID
+  set_fact:
+    postgresql_resource_id: "{{ postgresql_server_info.stdout | from_json | json_query('id') }}"
+
+- name: Check if Private DNS Zone exists using Azure CLI
+  command: az network private-dns zone show --resource-group "{{ resource_group_name }}" --name "{{ private_dns_zone_name }}"
+  register: dns_zone_check
+  failed_when: false
+  changed_when: false
+
+- name: Create Private DNS Zone for PostgreSQL using Azure CLI
+  command: >
+    az network private-dns zone create
+    --resource-group "{{ resource_group_name }}"
+    --name "{{ private_dns_zone_name }}"
+    --tags "{{ postgresql_tags | to_nice_json }}"
+  register: dns_zone_create_result
+  when: dns_zone_check.rc != 0
+  changed_when: dns_zone_create_result.rc == 0
+
+- name: Display Private DNS Zone creation status
+  debug:
+    msg: "Private DNS Zone '{{ private_dns_zone_name }}': {{ 'Created' if dns_zone_check.rc != 0 else 'Already exists' }}"
+
+- name: Link Private DNS Zone to VNet using Azure CLI
+  command: >
+    az network private-dns link vnet create
+    --resource-group "{{ resource_group_name }}"
+    --zone-name "{{ private_dns_zone_name }}"
+    --name "{{ project_name }}-{{ env_name }}-postgres-dns-link"
+    --virtual-network "{{ vnet_name }}"
+    --registration-enabled false
+  register: dns_link_result
+  changed_when: dns_link_result.rc == 0
+  failed_when: dns_link_result.rc != 0
+
+- name: Display DNS Zone link status
+  debug:
+    msg: "DNS Zone linked to VNet: {{ 'Success' if dns_link_result.rc == 0 else 'Failed' }}"
+
+- name: Check if Private Endpoint exists using Azure CLI
+  command: az network private-endpoint show --resource-group "{{ resource_group_name }}" --name "{{ private_endpoint_name }}"
+  register: private_endpoint_check
+  failed_when: false
+  changed_when: false
+
+- name: Create Private Endpoint for PostgreSQL using Azure CLI
+  command: >
+    az network private-endpoint create
+    --resource-group "{{ resource_group_name }}"
+    --name "{{ private_endpoint_name }}"
+    --vnet-name "{{ vnet_name }}"
+    --subnet "{{ private_endpoint_subnet }}"
+    --private-connection-resource-id "{{ postgresql_resource_id }}"
+    --group-ids "{{ private_endpoint_group_ids | join(',') }}"
+    --connection-name "{{ project_name }}-{{ env_name }}-postgres-connection"
+    --tags "{{ postgresql_tags | to_nice_json }}"
+  register: private_endpoint_create_result
+  when: private_endpoint_check.rc != 0
+  changed_when: private_endpoint_create_result.rc == 0
+
+- name: Display Private Endpoint creation status
+  debug:
+    msg: "Private Endpoint '{{ private_endpoint_name }}': {{ 'Created' if private_endpoint_check.rc != 0 else 'Already exists' }}"
+
+- name: Get Private Endpoint IP address using Azure CLI
+  command: az network private-endpoint show --resource-group "{{ resource_group_name }}" --name "{{ private_endpoint_name }}"
+  register: private_endpoint_info
+  changed_when: false
+
+- name: Set Private Endpoint IP address
+  set_fact:
+    private_endpoint_ip: "{{ private_endpoint_info.stdout | from_json | json_query('networkInterfaces[0].ipConfigurations[0].privateIpAddress') }}"
+
+- name: Create DNS A record for PostgreSQL server using Azure CLI
+  command: >
+    az network private-dns record-set a create
+    --resource-group "{{ resource_group_name }}"
+    --zone-name "{{ private_dns_zone_name }}"
+    --name "{{ private_dns_record_name }}"
+  register: dns_record_create_result
+  changed_when: dns_record_create_result.rc == 0
+  failed_when: dns_record_create_result.rc != 0
+
+- name: Add IP address to DNS A record using Azure CLI
+  command: >
+    az network private-dns record-set a add-record
+    --resource-group "{{ resource_group_name }}"
+    --zone-name "{{ private_dns_zone_name }}"
+    --record-set-name "{{ private_dns_record_name }}"
+    --ipv4-address "{{ private_endpoint_ip }}"
+  register: dns_record_add_result
+  changed_when: dns_record_add_result.rc == 0
+  failed_when: dns_record_add_result.rc != 0
+
+- name: Display DNS record creation status
+  debug:
+    msg: "DNS A record '{{ private_dns_record_name }}': {{ 'Created' if dns_record_add_result.rc == 0 else 'Failed' }}"
+
+- name: Set PostgreSQL private connection info
+  set_fact:
+    postgresql_private_connection:
+      server_name: "{{ postgresql_server_name }}"
+      private_fqdn: "{{ private_dns_record_name }}.{{ private_dns_zone_name }}"
+      private_ip: "{{ private_endpoint_ip }}"
+      port: 5432
+      connection_string: "postgresql://{{ postgresql_admin_username }}:{{ postgresql_admin_password }}@{{ private_dns_record_name }}.{{ private_dns_zone_name }}:5432/{{ postgresql_databases[0].name }}"
+
+- name: Display PostgreSQL Private Endpoint information
+  debug:
+    msg:
+      - "🔒 PostgreSQL Private Endpoint Information"
+      - "Private Endpoint Name: {{ private_endpoint_name }}"
+      - "Private IP Address: {{ private_endpoint_ip }}"
+      - "Private FQDN: {{ postgresql_private_connection.private_fqdn }}"
+      - "DNS Zone: {{ private_dns_zone_name }}"
+      - "Subnet: {{ private_endpoint_subnet }}"
+      - "Connection String: {{ postgresql_private_connection.connection_string | regex_replace(':[^@]*@', ':***@') }}"
+      - "Access: Private only (through VNet)"
+  when: display_private_endpoint_info | default(true)

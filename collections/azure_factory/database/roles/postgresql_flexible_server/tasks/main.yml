@@ -1,0 +1,206 @@
+---
+# PostgreSQL Flexible Server Role Tasks
+# This role creates and configures Azure PostgreSQL Flexible Server using ONLY Azure CLI commands
+
+- name: Validate required variables
+  fail:
+    msg: "{{ item }} is required but not defined"
+  when: 
+    - item is not defined or item == ""
+    - validate_postgresql_config | default(true)
+  loop:
+    - postgresql_server_name
+    - postgresql_admin_username
+    - postgresql_admin_password
+    - resource_group_name
+
+- name: Validate PostgreSQL password strength
+  fail:
+    msg: "PostgreSQL admin password must be at least 8 characters long and contain uppercase, lowercase, numbers, and special characters"
+  when: 
+    - postgresql_admin_password | length < 8
+    - validate_postgresql_config | default(true)
+
+- name: Set PostgreSQL server facts
+  set_fact:
+    postgresql_server:
+      name: "{{ postgresql_server_name }}"
+      admin_username: "{{ postgresql_admin_username }}"
+      admin_password: "{{ postgresql_admin_password }}"
+      version: "{{ postgresql_version }}"
+      sku_name: "{{ postgresql_sku_name }}"
+      tier: "{{ postgresql_tier }}"
+      storage_size: "{{ postgresql_storage_size }}"
+      backup_retention: "{{ postgresql_backup_retention }}"
+      location: "{{ resource_group_location }}"
+
+- name: Check if PostgreSQL Flexible Server exists
+  command: az postgres flexible-server show --resource-group "{{ resource_group_name }}" --name "{{ postgresql_server_name }}"
+  register: postgresql_check
+  failed_when: false
+  changed_when: false
+
+- name: Create PostgreSQL Flexible Server using Azure CLI
+  command: >
+    az postgres flexible-server create
+    --resource-group "{{ resource_group_name }}"
+    --name "{{ postgresql_server_name }}"
+    --admin-user "{{ postgresql_admin_username }}"
+    --admin-password "{{ postgresql_admin_password }}"
+    --version "{{ postgresql_version }}"
+    --sku-name "{{ postgresql_sku_name }}"
+    --tier "{{ postgresql_tier }}"
+    --storage-size "{{ postgresql_storage_size }}"
+    --backup-retention "{{ postgresql_backup_retention }}"
+    --location "{{ resource_group_location }}"
+    --public-access "{{ 'Enabled' if postgresql_public_access else 'Disabled' }}"
+    --ssl-enforcement "{{ 'Enabled' if postgresql_ssl_enforcement else 'Disabled' }}"
+    --minimal-tls-version "{{ postgresql_minimal_tls_version }}"
+    --geo-redundant-backup "{{ 'Enabled' if postgresql_geo_redundant_backup else 'Disabled' }}"
+    --high-availability "{{ 'Enabled' if postgresql_high_availability else 'Disabled' }}"
+    --zone "{{ postgresql_zone }}"
+    --tags "{{ postgresql_tags | to_nice_json }}"
+  register: postgresql_create_result
+  when: postgresql_check.rc != 0
+  changed_when: postgresql_create_result.rc == 0
+
+- name: Display PostgreSQL server creation status
+  debug:
+    msg: "PostgreSQL Flexible Server '{{ postgresql_server_name }}': {{ 'Created' if postgresql_check.rc != 0 else 'Already exists' }}"
+
+- name: Get PostgreSQL server details using Azure CLI
+  command: az postgres flexible-server show --resource-group "{{ resource_group_name }}" --name "{{ postgresql_server_name }}"
+  register: postgresql_server_details
+  changed_when: false
+
+- name: Set PostgreSQL server connection info
+  set_fact:
+    postgresql_connection_info:
+      server_name: "{{ postgresql_server_name }}"
+      fqdn: "{{ postgresql_server_details.stdout | from_json | json_query('fullyQualifiedDomainName') }}"
+      port: 5432
+      admin_username: "{{ postgresql_admin_username }}"
+      ssl_required: "{{ postgresql_ssl_enforcement }}"
+
+- name: Create PostgreSQL databases using Azure CLI
+  command: >
+    az postgres flexible-server db create
+    --resource-group "{{ resource_group_name }}"
+    --server-name "{{ postgresql_server_name }}"
+    --database-name "{{ item.name }}"
+    --charset "{{ item.charset | default('UTF8') }}"
+    --collation "{{ item.collation | default('en_US.UTF8') }}"
+  register: database_create_result
+  loop: "{{ postgresql_databases }}"
+  changed_when: database_create_result.rc == 0
+  failed_when: database_create_result.rc != 0
+
+- name: Display database creation status
+  debug:
+    msg: "Database '{{ item.name }}': {{ 'Created' if item.rc == 0 else 'Failed' }}"
+  loop: "{{ database_create_result.results }}"
+
+- name: Configure PostgreSQL firewall rules using Azure CLI
+  command: >
+    az postgres flexible-server firewall-rule create
+    --resource-group "{{ resource_group_name }}"
+    --name "{{ postgresql_server_name }}"
+    --rule-name "{{ item.name }}"
+    --start-ip-address "{{ item.start_ip }}"
+    --end-ip-address "{{ item.end_ip }}"
+  register: firewall_rule_result
+  loop: "{{ postgresql_firewall_rules }}"
+  changed_when: firewall_rule_result.rc == 0
+  failed_when: firewall_rule_result.rc != 0
+
+- name: Display firewall rule creation status
+  debug:
+    msg: "Firewall rule '{{ item.name }}': {{ 'Created' if item.rc == 0 else 'Failed' }}"
+  loop: "{{ firewall_rule_result.results }}"
+
+- name: Get existing UAMI details using Azure CLI
+  command: az identity show --resource-group "{{ resource_group_name }}" --name "{{ uami_name }}"
+  register: uami_details
+  failed_when: false
+  changed_when: false
+  when: enable_uami_integration | default(true)
+
+- name: Set UAMI resource ID
+  set_fact:
+    uami_resource_id: "{{ uami_details.stdout | from_json | json_query('id') }}"
+  when: 
+    - enable_uami_integration | default(true)
+    - uami_details.rc == 0
+
+- name: Configure Azure AD authentication for PostgreSQL using Azure CLI
+  command: >
+    az postgres flexible-server ad-admin create
+    --resource-group "{{ resource_group_name }}"
+    --server-name "{{ postgresql_server_name }}"
+    --display-name "{{ uami_name }}"
+    --object-id "{{ uami_details.stdout | from_json | json_query('principalId') }}"
+    --tenant-id "{{ lookup('env', 'AZURE_TENANT_ID') }}"
+  register: ad_admin_result
+  when: 
+    - enable_uami_integration | default(true)
+    - uami_details.rc == 0
+  changed_when: ad_admin_result.rc == 0
+  failed_when: ad_admin_result.rc != 0
+
+- name: Display Azure AD admin configuration status
+  debug:
+    msg: "Azure AD admin '{{ uami_name }}': {{ 'Configured' if ad_admin_result.rc == 0 else 'Failed' }}"
+  when: enable_uami_integration | default(true)
+
+- name: Configure PostgreSQL performance settings using Azure CLI
+  command: >
+    az postgres flexible-server parameter set
+    --resource-group "{{ resource_group_name }}"
+    --server-name "{{ postgresql_server_name }}"
+    --name "{{ item.name }}"
+    --value "{{ item.value }}"
+  register: parameter_set_result
+  loop: "{{ postgresql_performance_tuning | dict2items }}"
+  changed_when: parameter_set_result.rc == 0
+  failed_when: parameter_set_result.rc != 0
+
+- name: Display performance parameter configuration status
+  debug:
+    msg: "Parameter '{{ item.name }}': {{ 'Set' if item.rc == 0 else 'Failed' }}"
+  loop: "{{ parameter_set_result.results }}"
+
+- name: Configure PostgreSQL monitoring using Azure CLI
+  command: >
+    az postgres flexible-server parameter set
+    --resource-group "{{ resource_group_name }}"
+    --server-name "{{ postgresql_server_name }}"
+    --name "log_statement"
+    --value "all"
+  register: monitoring_config_result
+  when: enable_monitoring | default(true)
+  changed_when: monitoring_config_result.rc == 0
+  failed_when: monitoring_config_result.rc != 0
+
+- name: Display monitoring configuration status
+  debug:
+    msg: "Monitoring configuration: {{ 'Enabled' if monitoring_config_result.rc == 0 else 'Failed' }}"
+  when: enable_monitoring | default(true)
+
+- name: Display PostgreSQL Flexible Server information
+  debug:
+    msg:
+      - "🗄️ PostgreSQL Flexible Server Information"
+      - "Server Name: {{ postgresql_server_name }}"
+      - "FQDN: {{ postgresql_connection_info.fqdn }}"
+      - "Port: {{ postgresql_connection_info.port }}"
+      - "Admin Username: {{ postgresql_admin_username }}"
+      - "SSL Required: {{ postgresql_ssl_enforcement }}"
+      - "Version: {{ postgresql_version }}"
+      - "SKU: {{ postgresql_sku_name }} ({{ postgresql_tier }})"
+      - "Storage: {{ postgresql_storage_size }}GB"
+      - "Backup Retention: {{ postgresql_backup_retention }} days"
+      - "Public Access: {{ 'Enabled' if postgresql_public_access else 'Disabled' }}"
+      - "UAMI Integration: {{ 'Enabled' if enable_uami_integration | default(true) else 'Disabled' }}"
+      - "Databases Created: {{ postgresql_databases | length }}"
+      - "Firewall Rules: {{ postgresql_firewall_rules | length }}"
+  when: display_postgresql_info | default(true)

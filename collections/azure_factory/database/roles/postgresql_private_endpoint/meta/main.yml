@@ -1,0 +1,22 @@
+---
+# PostgreSQL Private Endpoint Role Meta Information
+galaxy_info:
+  author: Azure Factory Team
+  description: Private endpoint and DNS configuration for PostgreSQL Flexible Server using Azure CLI commands only
+  company: Azure Factory
+  license: MIT
+  min_ansible_version: "2.9"
+  platforms:
+    - name: Azure
+      versions:
+        - all
+  galaxy_tags:
+    - azure
+    - postgresql
+    - private-endpoint
+    - dns
+    - networking
+    - azure-cli
+
+dependencies:
+  - role: azure_factory.database.postgresql_flexible_server

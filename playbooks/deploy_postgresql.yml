@@ -1,0 +1,172 @@
+---
+# Azure PostgreSQL Flexible Server Deployment Playbook
+# This playbook deploys PostgreSQL Flexible Server using ONLY Azure CLI commands
+# Run this after: ansible-playbook -i inventories/dev playbooks/deploy_infrastructure.yml
+
+- name: Deploy Azure PostgreSQL Flexible Server
+  hosts: azure_dev
+  connection: local
+  gather_facts: false
+  
+  pre_tasks:
+    - name: Display PostgreSQL deployment information
+      debug:
+        msg:
+          - "🗄️ Starting Azure PostgreSQL Flexible Server Deployment"
+          - "Project: {{ project_name }}"
+          - "Environment: {{ env_name }}"
+          - "Resource Group: {{ resource_group_name }}"
+          - "PostgreSQL Server: {{ postgresql_server_name }}"
+          - "Version: {{ postgresql_version }}"
+          - "SKU: {{ postgresql_sku_name }} ({{ postgresql_tier }})"
+          - "Storage: {{ postgresql_storage_size }}GB"
+          - "Backup Retention: {{ postgresql_backup_retention }} days"
+          - "Public Access: {{ 'Enabled' if postgresql_public_access else 'Disabled' }}"
+          - "Private Endpoint: {{ 'Enabled' if enable_private_endpoint else 'Disabled' }}"
+          - "UAMI Integration: {{ 'Enabled' if enable_uami_integration else 'Disabled' }}"
+          - "UAMI Name: {{ uami_name | default('N/A') if enable_uami_integration else 'N/A' }}"
+          - "Databases: {{ postgresql_databases | length }}"
+    
+    - name: Validate required environment variables
+      fail:
+        msg: "{{ item }} environment variable is required"
+      when: 
+        - lookup('env', item) is not defined or lookup('env', item) == ""
+        - validate_env_vars | default(true)
+      loop:
+        - AZURE_SUBSCRIPTION_ID
+        - AZURE_TENANT_ID
+    
+    - name: Check if Resource Group exists using Azure CLI
+      command: az group show --name "{{ resource_group_name }}"
+      register: rg_check
+      failed_when: false
+      changed_when: false
+    
+    - name: Fail if Resource Group doesn't exist
+      fail:
+        msg: "Resource Group '{{ resource_group_name }}' not found. Please run infrastructure deployment first: ansible-playbook -i inventories/dev playbooks/deploy_infrastructure.yml"
+      when: rg_check.rc != 0
+    
+    - name: Check if VNet exists using Azure CLI
+      command: az network vnet show --resource-group "{{ resource_group_name }}" --name "{{ vnet_name }}"
+      register: vnet_check
+      failed_when: false
+      changed_when: false
+    
+    - name: Fail if VNet doesn't exist
+      fail:
+        msg: "VNet '{{ vnet_name }}' not found. Please run infrastructure deployment first: ansible-playbook -i inventories/dev playbooks/deploy_infrastructure.yml"
+      when: vnet_check.rc != 0
+    
+    - name: Check if UAMI exists using Azure CLI (if UAMI integration is enabled)
+      command: az identity show --resource-group "{{ resource_group_name }}" --name "{{ uami_name }}"
+      register: uami_check
+      failed_when: false
+      changed_when: false
+      when: enable_uami_integration | default(true)
+    
+    - name: Fail if UAMI doesn't exist (if UAMI integration is enabled)
+      fail:
+        msg: "UAMI '{{ uami_name }}' not found. Please run webapp deployment first: ansible-playbook -i inventories/dev playbooks/deploy_webapp_only.yml"
+      when: 
+        - enable_uami_integration | default(true)
+        - uami_check.rc != 0
+  
+  roles:
+    # Step 1: Azure Authentication
+    - role: azure_auth
+      vars:
+        project_name: "{{ project_name }}"
+        environment: "{{ env_name }}"
+        azure_subscription_id: "{{ lookup('env', 'AZURE_SUBSCRIPTION_ID') | default('') }}"
+        azure_tenant_id: "{{ lookup('env', 'AZURE_TENANT_ID') | default('') }}"
+        azure_auth_method: "{{ lookup('env', 'AZURE_AUTH_METHOD') | default('cli') }}"
+        validate_auth: true
+    
+    # Step 2: Create PostgreSQL Flexible Server using Azure CLI
+    - role: postgresql_flexible_server
+      vars:
+        display_postgresql_info: true
+    
+    # Step 3: Create Private Endpoint and DNS Zone using Azure CLI (if enabled)
+    - role: postgresql_private_endpoint
+      vars:
+        display_private_endpoint_info: true
+      when: enable_private_endpoint | default(true)
+  
+  post_tasks:
+    - name: Display PostgreSQL deployment summary
+      debug:
+        msg:
+          - "🎉 PostgreSQL Flexible Server Deployment Completed Successfully!"
+          - "Resource Group: {{ resource_group_name }}"
+          - "PostgreSQL Server: {{ postgresql_server_name }}"
+          - "FQDN: {{ postgresql_connection_info.fqdn | default('N/A') }}"
+          - "Private FQDN: {{ postgresql_private_connection.private_fqdn | default('N/A') if enable_private_endpoint | default(false) else 'N/A' }}"
+          - "Private IP: {{ postgresql_private_connection.private_ip | default('N/A') if enable_private_endpoint | default(false) else 'N/A' }}"
+          - "Version: {{ postgresql_version }}"
+          - "SKU: {{ postgresql_sku_name }} ({{ postgresql_tier }})"
+          - "Storage: {{ postgresql_storage_size }}GB"
+          - "Backup Retention: {{ postgresql_backup_retention }} days"
+          - "SSL Enforcement: {{ postgresql_ssl_enforcement }}"
+          - "UAMI Integration: {{ 'Enabled' if enable_uami_integration | default(true) else 'Disabled' }}"
+          - "UAMI Name: {{ uami_name if enable_uami_integration | default(true) else 'N/A' }}"
+          - "Databases Created: {{ postgresql_databases | length }}"
+          - "Azure Account: {{ azure_account.name }}"
+          - "Subscription: {{ azure_account.subscription_id }}"
+          - ""
+          - "🔗 Connection Information:"
+          - "Public Connection: psql -h {{ postgresql_connection_info.fqdn | default('N/A') }} -U {{ postgresql_admin_username }} -d {{ postgresql_databases[0].name }}"
+          - "Private Connection: psql -h {{ postgresql_private_connection.private_fqdn | default('N/A') if enable_private_endpoint | default(false) else 'N/A' }} -U {{ postgresql_admin_username }} -d {{ postgresql_databases[0].name }}"
+          - ""
+          - "🧹 To clean up PostgreSQL resources, run:"
+          - "ansible-playbook -i inventories/dev playbooks/destroy_postgresql.yml"
+    
+    - name: Save PostgreSQL deployment information to file
+      copy:
+        content: |
+          # Azure PostgreSQL Flexible Server Deployment Summary
+          Project: {{ project_name }}
+          Environment: {{ env_name }}
+          Deployment Date: {{ ansible_date_time.iso8601 }}
+          
+          ## PostgreSQL Server Created
+          Resource Group: {{ resource_group_name }}
+          PostgreSQL Server: {{ postgresql_server_name }}
+          FQDN: {{ postgresql_connection_info.fqdn | default('N/A') }}
+          Private FQDN: {{ postgresql_private_connection.private_fqdn | default('N/A') if enable_private_endpoint | default(false) else 'N/A' }}
+          Private IP: {{ postgresql_private_connection.private_ip | default('N/A') if enable_private_endpoint | default(false) else 'N/A' }}
+          
+          ## Server Configuration
+          Version: {{ postgresql_version }}
+          SKU: {{ postgresql_sku_name }} ({{ postgresql_tier }})
+          Storage: {{ postgresql_storage_size }}GB
+          Backup Retention: {{ postgresql_backup_retention }} days
+          SSL Enforcement: {{ postgresql_ssl_enforcement }}
+          Public Access: {{ postgresql_public_access }}
+          
+          ## Security Configuration
+          UAMI Integration: {{ 'Enabled' if enable_uami_integration | default(true) else 'Disabled' }}
+          UAMI Name: {{ uami_name if enable_uami_integration | default(true) else 'N/A' }}
+          Private Endpoint: {{ 'Enabled' if enable_private_endpoint | default(false) else 'Disabled' }}
+          Private DNS Zone: {{ private_dns_zone_name if enable_private_endpoint | default(false) else 'N/A' }}
+          
+          ## Databases Created
+          {% for db in postgresql_databases %}
+          - {{ db.name }} ({{ db.charset | default('UTF8') }}, {{ db.collation | default('en_US.UTF8') }})
+          {% endfor %}
+          
+          ## Connection Information
+          Public Connection: psql -h {{ postgresql_connection_info.fqdn | default('N/A') }} -U {{ postgresql_admin_username }} -d {{ postgresql_databases[0].name }}
+          Private Connection: psql -h {{ postgresql_private_connection.private_fqdn | default('N/A') if enable_private_endpoint | default(false) else 'N/A' }} -U {{ postgresql_admin_username }} -d {{ postgresql_databases[0].name }}
+          
+          ## Azure Account Information
+          Azure Account: {{ azure_account.name }}
+          Subscription: {{ azure_account.subscription_id }}
+          
+          ## Cleanup
+          To remove PostgreSQL resources: ansible-playbook -i inventories/dev playbooks/destroy_postgresql.yml
+        dest: "./postgresql-deployment-summary-{{ project_name }}-{{ env_name }}.txt"
+      delegate_to: localhost
+      when: save_postgresql_info | default(false)
