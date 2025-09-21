@@ -1,0 +1,309 @@
+# Azure Factory Project Rules for Cursor AI
+
+## Project Overview
+This is an Azure Factory project - an Ansible-based automation solution for deploying Azure infrastructure and web applications. The project uses **ONLY Azure CLI commands** for all Azure resource management operations.
+
+## Core Architecture
+- **Infrastructure**: Resource Groups, VNets, Subnets, NSGs, App Service Plans
+- **Applications**: Web Apps with User Assigned Managed Identity (UAMI)
+- **Security**: Private Endpoints, Private DNS Zones, Custom Domains
+- **Environments**: Separate dev/prod configurations with environment-specific variables
+
+## CRITICAL RULE: Azure CLI Commands Only
+**NEVER use Azure SDK, Azure PowerShell, ARM templates, Bicep, or Terraform. ONLY use Azure CLI commands.**
+
+### Allowed Azure Operations:
+- `az login`, `az account show`, `az account set`
+- `az group create/show/delete`
+- `az network vnet create/show/delete`
+- `az network subnet create/show/delete`
+- `az network nsg create/show/delete`
+- `az appservice plan create/show/delete`
+- `az webapp create/show/delete`
+- `az identity create/show/delete`
+- `az network private-endpoint create/show/delete`
+- `az network private-dns zone create/show/delete`
+- `az resource delete/show/list`
+
+## Project Structure Rules
+
+### Collections Structure
+```
+collections/azure_factory/
+├── core/           # Authentication, Resource Groups
+├── app/            # Web Apps, App Service Plans, UAMI
+├── network/        # VNets, Subnets, NSGs, Private Endpoints
+├── storage/        # Storage accounts (future)
+├── database/       # Databases (future)
+├── compute/        # VMs (future)
+└── monitoring/     # Monitoring (future)
+```
+
+### Role Naming Convention
+- Use descriptive names: `azure_auth`, `resource_group`, `webapp`, `vnet_complete`
+- Follow Azure resource naming: `{project}-{env}-{resource-type}`
+- Example: `myapp-dev-rg`, `myapp-dev-webapp`, `myapp-dev-asp`
+
+### Variable Naming Convention
+- Use snake_case: `resource_group_name`, `app_service_plan_name`
+- Prefix with resource type: `vnet_name`, `webapp_name`, `nsg_name`
+- Environment variables: `AZURE_SUBSCRIPTION_ID`, `AZURE_TENANT_ID`
+
+## Ansible Playbook Rules
+
+### Playbook Structure
+1. **Pre-tasks**: Validation, authentication, environment checks
+2. **Roles**: Core infrastructure → Network → App services
+3. **Post-tasks**: Summary, cleanup, file generation
+
+### Required Pre-tasks
+```yaml
+- name: Validate required environment variables
+  fail:
+    msg: "{{ item }} environment variable is required"
+  when: lookup('env', item) is not defined or lookup('env', item) == ""
+  loop:
+    - AZURE_SUBSCRIPTION_ID
+    - AZURE_TENANT_ID
+```
+
+### Error Handling Pattern
+```yaml
+- name: Check if resource exists
+  command: az resource show --resource-group "{{ rg_name }}" --name "{{ resource_name }}"
+  register: resource_check
+  failed_when: false
+  changed_when: false
+
+- name: Fail if resource doesn't exist
+  fail:
+    msg: "Resource '{{ resource_name }}' not found"
+  when: resource_check.rc != 0
+```
+
+## Environment Configuration Rules
+
+### Environment Variables (Required)
+- `AZURE_SUBSCRIPTION_ID`: Azure subscription ID
+- `AZURE_TENANT_ID`: Azure tenant ID
+- `AZURE_AUTH_METHOD`: Authentication method (default: 'cli')
+
+### Inventory Structure
+```
+inventories/
+├── dev/
+│   ├── hosts.yml
+│   └── group_vars/
+│       ├── all.yml          # Common variables
+│       ├── webapp.yml       # Web app specific
+│       └── vault.yml        # Secrets (encrypted)
+└── prod/
+    └── [same structure]
+```
+
+### Variable Hierarchy
+1. Environment variables (`lookup('env', 'VAR')`)
+2. Inventory group_vars
+3. Role defaults
+4. Playbook vars
+
+## Resource Naming Standards
+
+### Naming Pattern
+`{project_name}-{env_name}-{resource_type}`
+
+### Examples
+- Resource Group: `myapp-dev-rg`
+- VNet: `myapp-dev-vnet`
+- App Service Plan: `myapp-dev-asp`
+- Web App: `myapp-dev-webapp`
+- UAMI: `myapp-dev-uami`
+- Private Endpoint: `myapp-dev-pe`
+
+### Tags Required
+```yaml
+tags:
+  Project: "{{ project_name }}"
+  Environment: "{{ env_name }}"
+  ManagedBy: "Ansible"
+  CostCenter: "Development"  # or "Production"
+```
+
+## Network Architecture Rules
+
+### VNet Configuration
+- Address Space: `10.0.0.0/16`
+- Subnets:
+  - `appservice-delegated`: `10.0.1.0/24` (for App Service Plan)
+  - `appservice-private`: `10.0.2.0/24` (for Private Endpoints)
+  - `frontend`: `10.0.3.0/24` (for web applications)
+  - `backend`: `10.0.4.0/24` (for API services)
+  - `database`: `10.0.5.0/24` (for database services)
+
+### NSG Rules
+- Allow HTTPS (443) and HTTP (80) from anywhere
+- Use priority 1000+ for custom rules
+- Always include source/destination address prefixes
+
+## App Service Rules
+
+### SKU Requirements
+- **Development**: `B1` (Basic tier - supports private endpoints)
+- **Production**: `S1` or higher (Standard tier)
+- **Linux**: Always use `--is-linux` flag
+- **Reserved**: Always use `--reserved` flag for Linux
+
+### Web App Configuration
+```yaml
+webapp_app_settings:
+  WEBSITES_ENABLE_APP_SERVICE_STORAGE: "false"
+  WEBSITES_PORT: "8000"
+  SCM_DO_BUILD_DURING_DEPLOYMENT: "true"
+```
+
+## Security Rules
+
+### User Assigned Managed Identity (UAMI)
+- Always enable UAMI for web apps
+- Use descriptive names: `{project}-{env}-uami`
+- Assign to web app using resource ID
+
+### Private Endpoints
+- Only available for Basic tier and above
+- Use group ID `sites` for Web Apps
+- Create private DNS zone: `privatelink.azurewebsites.net`
+
+## Deployment Workflow Rules
+
+### Infrastructure First
+1. Run `deploy_infrastructure.yml` first
+2. Creates: Resource Group, VNet, App Service Plan
+3. Validates: Azure authentication, provider registration
+
+### Web App Second
+1. Run `deploy_webapp_only.yml` after infrastructure
+2. Creates: Web App, UAMI, Private Endpoint, DNS Zone
+3. Validates: App Service Plan exists
+
+### Cleanup Order
+1. Run `destroy_webapp_only.yml` first
+2. Run `destroy_infrastructure.yml` second
+3. Always include confirmation prompts
+
+## Code Quality Rules
+
+### Ansible Best Practices
+- Use `connection: local` for Azure CLI commands
+- Set `gather_facts: false` for faster execution
+- Use `register` and `failed_when: false` for error handling
+- Include `changed_when: false` for read-only operations
+
+### Documentation Requirements
+- Every role must have README.md
+- Every playbook must have header comments
+- All variables must be documented
+- Include examples in documentation
+
+### Testing Requirements
+- Test all Azure CLI commands before adding to playbooks
+- Validate error handling scenarios
+- Test both success and failure cases
+- Update AZURE_CLI_COMMANDS.md with new commands
+
+## File Modification Rules
+
+### When Adding New Azure Resources
+1. **Add to AZURE_CLI_COMMANDS.md** with full syntax and examples
+2. **Create new role** in appropriate collection
+3. **Update inventory variables** if needed
+4. **Test commands** before adding to playbooks
+5. **Update documentation** with new resources
+
+### When Modifying Existing Resources
+1. **Update AZURE_CLI_COMMANDS.md** with changes
+2. **Test in dev environment** first
+3. **Update role tasks** with proper error handling
+4. **Validate variable changes** in inventory files
+
+## Error Handling Standards
+
+### Required Error Handling
+```yaml
+- name: Azure CLI command
+  command: az resource command --parameters
+  register: result
+  failed_when: false
+  changed_when: result.rc == 0
+
+- name: Handle failure
+  fail:
+    msg: "Command failed: {{ result.stderr }}"
+  when: result.rc != 0
+```
+
+### Validation Patterns
+- Check if resource exists before operations
+- Validate environment variables
+- Verify Azure CLI login status
+- Check resource group existence
+
+## Output and Logging Rules
+
+### Required Output
+- Display deployment information in pre_tasks
+- Show resource creation status
+- Display final summary with URLs and next steps
+- Save deployment info to files when requested
+
+### Logging Format
+- Use emojis for visual clarity: 🏗️ 🚀 🎉 🗑️
+- Include resource names and status
+- Show Azure account information
+- Provide next steps and cleanup commands
+
+## Future Development Rules
+
+### Adding New Azure Services
+1. **Research Azure CLI commands** for the service
+2. **Add commands to AZURE_CLI_COMMANDS.md**
+3. **Create new collection** if needed
+4. **Follow naming conventions**
+5. **Test thoroughly** in dev environment
+
+### Extending Existing Services
+1. **Update existing roles** with new functionality
+2. **Maintain backward compatibility**
+3. **Update documentation**
+4. **Test with existing playbooks**
+
+## Security Considerations
+
+### Secrets Management
+- Use Ansible Vault for sensitive data
+- Store secrets in `vault.yml` files
+- Never commit secrets to version control
+- Use environment variables for CI/CD
+
+### Access Control
+- Use User Assigned Managed Identity
+- Implement least privilege principle
+- Enable private endpoints where possible
+- Use NSGs for network security
+
+## Performance Optimization
+
+### Resource Management
+- Use `--no-wait` for long-running operations
+- Implement retry logic for eventual consistency
+- Use parallel execution where possible
+- Clean up resources promptly
+
+### Cost Optimization
+- Use Basic tier for development
+- Enable auto-shutdown for dev environments
+- Implement proper tagging for cost tracking
+- Use appropriate SKU sizes
+
+---
+
+## Remember: This project uses ONLY Azure CLI commands. Never suggest Azure SDK, PowerShell, ARM templates, Bicep, or Terraform solutions.
