@@ -9,6 +9,14 @@
   gather_facts: false
   
   pre_tasks:
+    - name: Load PostgreSQL vault variables
+      include_vars:
+        file: "{{ playbook_dir }}/../inventories/dev/group_vars/vault_postgresql.yml"
+    
+    - name: Set PostgreSQL admin password from vault
+      set_fact:
+        postgresql_admin_password: "{{ vault_postgresql_password }}"
+    
     - name: Display PostgreSQL deployment information
       debug:
         msg:
@@ -72,6 +80,9 @@
       when: 
         - enable_uami_integration | default(true)
         - uami_check.rc != 0
+    
+    # Note: Microsoft.DBforPostgreSQL provider registration is required once per subscription
+    # If you get "MissingSubscriptionRegistration" error, run: az provider register --namespace Microsoft.DBforPostgreSQL
   
   roles:
     # Step 1: Azure Authentication

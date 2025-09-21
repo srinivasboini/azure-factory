@@ -17,8 +17,4 @@ galaxy_info:
     - flexible-server
     - azure-cli
 
-dependencies:
-  - role: azure_factory.core.azure_auth
-    when: validate_auth | default(true)
-  - role: azure_factory.core.resource_group
-    when: validate_resource_group | default(true)
+dependencies: []

@@ -21,7 +21,7 @@
 
 - name: Set PostgreSQL server resource ID
   set_fact:
-    postgresql_resource_id: "{{ postgresql_server_info.stdout | from_json | json_query('id') }}"
+    postgresql_resource_id: "{{ (postgresql_server_info.stdout | from_json).id }}"
 
 - name: Check if Private DNS Zone exists using Azure CLI
   command: az network private-dns zone show --resource-group "{{ resource_group_name }}" --name "{{ private_dns_zone_name }}"
@@ -34,7 +34,7 @@
     az network private-dns zone create
     --resource-group "{{ resource_group_name }}"
     --name "{{ private_dns_zone_name }}"
-    --tags "{{ postgresql_tags | to_nice_json }}"
+    --tags "Project={{ project_name }}" "Environment={{ env_name }}" "ManagedBy=Ansible" "ResourceType=PostgreSQLPrivateEndpoint" "CostCenter=Development"
   register: dns_zone_create_result
   when: dns_zone_check.rc != 0
   changed_when: dns_zone_create_result.rc == 0
@@ -42,6 +42,12 @@
 - name: Display Private DNS Zone creation status
   debug:
     msg: "Private DNS Zone '{{ private_dns_zone_name }}': {{ 'Created' if dns_zone_check.rc != 0 else 'Already exists' }}"
+
+- name: Check if Private DNS Zone link exists using Azure CLI
+  command: az network private-dns link vnet show --resource-group "{{ resource_group_name }}" --zone-name "{{ private_dns_zone_name }}" --name "{{ project_name }}-{{ env_name }}-postgres-dns-link"
+  register: dns_link_check
+  failed_when: false
+  changed_when: false
 
 - name: Link Private DNS Zone to VNet using Azure CLI
   command: >
@@ -52,14 +58,19 @@
     --virtual-network "{{ vnet_name }}"
     --registration-enabled false
   register: dns_link_result
+  when: dns_link_check.rc != 0
   changed_when: dns_link_result.rc == 0
-  failed_when: dns_link_result.rc != 0
+  failed_when: false
 
 - name: Display DNS Zone link status
   debug:
-    msg: "DNS Zone linked to VNet: {{ 'Success' if dns_link_result.rc == 0 else 'Failed' }}"
+    msg: "DNS Zone linked to VNet: {{ 'Success' if dns_link_check.rc != 0 else 'Already exists' }}"
 
-- name: Check if Private Endpoint exists using Azure CLI
+- name: Debug private endpoint name
+  debug:
+    msg: "Checking for PostgreSQL private endpoint: {{ private_endpoint_name }}"
+
+- name: Check if PostgreSQL Private Endpoint exists using Azure CLI
   command: az network private-endpoint show --resource-group "{{ resource_group_name }}" --name "{{ private_endpoint_name }}"
   register: private_endpoint_check
   failed_when: false
@@ -75,7 +86,7 @@
     --private-connection-resource-id "{{ postgresql_resource_id }}"
     --group-ids "{{ private_endpoint_group_ids | join(',') }}"
     --connection-name "{{ project_name }}-{{ env_name }}-postgres-connection"
-    --tags "{{ postgresql_tags | to_nice_json }}"
+    --tags "Project={{ project_name }}" "Environment={{ env_name }}" "ManagedBy=Ansible" "ResourceType=PostgreSQLPrivateEndpoint" "CostCenter=Development"
   register: private_endpoint_create_result
   when: private_endpoint_check.rc != 0
   changed_when: private_endpoint_create_result.rc == 0
@@ -85,13 +96,28 @@
     msg: "Private Endpoint '{{ private_endpoint_name }}': {{ 'Created' if private_endpoint_check.rc != 0 else 'Already exists' }}"
 
 - name: Get Private Endpoint IP address using Azure CLI
-  command: az network private-endpoint show --resource-group "{{ resource_group_name }}" --name "{{ private_endpoint_name }}"
-  register: private_endpoint_info
+  command: az network private-endpoint show --resource-group "{{ resource_group_name }}" --name "{{ private_endpoint_name }}" --query "networkInterfaces[0].id" -o tsv
+  register: private_endpoint_nic_id
+  changed_when: false
+
+- name: Extract Network Interface name
+  set_fact:
+    private_endpoint_nic_name: "{{ private_endpoint_nic_id.stdout | basename }}"
+
+- name: Get Network Interface IP address using Azure CLI
+  command: az network nic show --resource-group "{{ resource_group_name }}" --name "{{ private_endpoint_nic_name }}" --query "ipConfigurations[0].privateIPAddress" -o tsv
+  register: private_endpoint_ip_result
   changed_when: false
 
 - name: Set Private Endpoint IP address
   set_fact:
-    private_endpoint_ip: "{{ private_endpoint_info.stdout | from_json | json_query('networkInterfaces[0].ipConfigurations[0].privateIpAddress') }}"
+    private_endpoint_ip: "{{ private_endpoint_ip_result.stdout }}"
+
+- name: Check if DNS A record exists using Azure CLI
+  command: az network private-dns record-set a show --resource-group "{{ resource_group_name }}" --zone-name "{{ private_dns_zone_name }}" --name "{{ private_dns_record_name }}"
+  register: dns_record_check
+  failed_when: false
+  changed_when: false
 
 - name: Create DNS A record for PostgreSQL server using Azure CLI
   command: >
@@ -100,8 +126,9 @@
     --zone-name "{{ private_dns_zone_name }}"
     --name "{{ private_dns_record_name }}"
   register: dns_record_create_result
+  when: dns_record_check.rc != 0
   changed_when: dns_record_create_result.rc == 0
-  failed_when: dns_record_create_result.rc != 0
+  failed_when: false
 
 - name: Add IP address to DNS A record using Azure CLI
   command: >

@@ -64,10 +64,20 @@
 - name: Set Azure account facts
   set_fact:
     azure_account:
-      subscription_id: "{{ (az_login_check.stdout | from_json).id }}"
-      tenant_id: "{{ (az_login_check.stdout | from_json).tenantId }}"
-      name: "{{ (az_login_check.stdout | from_json).name }}"
-      user: "{{ (az_login_check.stdout | from_json).user.name }}"
+      subscription_id: "{{ (az_login_check.stdout | from_json).id if az_login_check.stdout != '' else azure_subscription_id }}"
+      tenant_id: "{{ (az_login_check.stdout | from_json).tenantId if az_login_check.stdout != '' else azure_tenant_id }}"
+      name: "{{ (az_login_check.stdout | from_json).name if az_login_check.stdout != '' else 'Azure Account' }}"
+      user: "{{ (az_login_check.stdout | from_json).user.name if az_login_check.stdout != '' else 'Azure User' }}"
+  when: az_login_check.stdout != ''
+
+- name: Set Azure account facts (fallback for check mode)
+  set_fact:
+    azure_account:
+      subscription_id: "{{ azure_subscription_id }}"
+      tenant_id: "{{ azure_tenant_id }}"
+      name: "Azure Account"
+      user: "Azure User"
+  when: az_login_check.stdout == ''
 
 - name: Display authentication summary
   debug:

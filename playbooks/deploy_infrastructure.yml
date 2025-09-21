@@ -46,24 +46,8 @@
         azure_auth_method: "{{ lookup('env', 'AZURE_AUTH_METHOD') | default('cli') }}"
         validate_auth: true
     
-    # Step 2: Register Required Azure Providers
-    - name: Register Microsoft.Web provider
-      command: az provider register --namespace Microsoft.Web
-      register: web_provider_registration
-      failed_when: false
-      changed_when: web_provider_registration.rc == 0
-    
-    - name: Wait for Microsoft.Web provider registration
-      command: az provider show --namespace Microsoft.Web --query "registrationState" -o tsv
-      register: web_provider_status
-      until: web_provider_status.stdout == "Registered"
-      retries: 30
-      delay: 10
-      when: web_provider_registration.rc == 0
-    
-    - name: Display provider registration status
-      debug:
-        msg: "Microsoft.Web provider registration: {{ web_provider_status.stdout | default('Already registered') }}"
+    # Note: Microsoft.Web provider registration is required once per subscription
+    # If you get "MissingSubscriptionRegistration" error, run: az provider register --namespace Microsoft.Web
   
   roles:
     

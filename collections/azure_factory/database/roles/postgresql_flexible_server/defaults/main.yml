@@ -3,11 +3,11 @@
 # These variables define default values for PostgreSQL Flexible Server deployment using Azure CLI commands only
 
 # PostgreSQL Server Configuration
-postgresql_server_name: "{{ project_name }}-{{ env_name }}-postgres"
+postgresql_server_name: "{{ project_name }}-{{ env_name }}-postgres-sb"
 postgresql_admin_username: "postgresadmin"
 postgresql_admin_password: ""  # Must be provided via Ansible Vault
 postgresql_version: "15"  # Supported versions: 13, 14, 15, 16
-postgresql_sku_name: "B_Standard_B1ms"  # Minimal pricing tier for development
+postgresql_sku_name: "standard_b1ms"  # Minimal pricing tier for development
 postgresql_tier: "Burstable"  # Burstable, GeneralPurpose, MemoryOptimized
 postgresql_storage_size: 32  # Minimum storage size in GB
 postgresql_backup_retention: 7  # Backup retention in days
@@ -51,11 +51,11 @@ uami_resource_id: ""  # Will be populated from existing UAMI
 postgresql_performance_tuning:
   shared_preload_libraries: "pg_stat_statements"
   max_connections: 100
-  shared_buffers: "256MB"
-  effective_cache_size: "1GB"
-  maintenance_work_mem: "64MB"
+  shared_buffers: "262144"  # 256MB in KB
+  effective_cache_size: "1048576"  # 1GB in KB
+  maintenance_work_mem: "65536"  # 64MB in KB
   checkpoint_completion_target: 0.9
-  wal_buffers: "16MB"
+  wal_buffers: "16384"  # 16MB in KB
   default_statistics_target: 100
 
 # PostgreSQL Monitoring Configuration

@@ -1,8 +1,8 @@
 ---
 # PostgreSQL Database Secrets - Development Environment
-# This file should be encrypted using Ansible Vault
-# To encrypt: ansible-vault encrypt inventories/dev/group_vars/vault_postgresql.yml
-# To edit: ansible-vault edit inventories/dev/group_vars/vault_postgresql.yml
+# For learning purposes, this file is kept in plain text
+# For production, encrypt using: ansible-vault encrypt inventories/dev/group_vars/vault_postgresql.yml
+# To edit encrypted: ansible-vault edit inventories/dev/group_vars/vault_postgresql.yml
 
 # PostgreSQL Admin Password
 # Must be at least 8 characters long and contain:

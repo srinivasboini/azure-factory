@@ -55,6 +55,8 @@ webapp_app_settings:
 # Private Endpoint Configuration (enabled for Basic tier)
 enable_private_endpoint: true  # Enabled for Basic tier
 private_endpoint_name: "{{ project_name }}-{{ env_name }}-pe"
+subnet_name: "appservice-private"  # Subnet for private endpoint
+target_resource_id: ""  # Will be set dynamically from webapp
 
 # User Assigned Managed Identity Configuration
 enable_user_assigned_identity: true  # Enable UAMI for the webapp

@@ -48,6 +48,7 @@
       command: az resource delete --resource-group "{{ resource_group_name }}" --name "{{ webapp_name }}" --resource-type "Microsoft.Web/sites"
       register: webapp_delete_result
       failed_when: false
+      changed_when: webapp_delete_result.rc == 0
     
     - name: Display Web App deletion status
       debug:
@@ -67,6 +68,8 @@
         - enable_user_assigned_identity | default(false)
         - uami_check.rc == 0
       register: uami_delete_result
+      failed_when: false
+      changed_when: uami_delete_result.rc == 0
     
     - name: Display UAMI deletion status
       debug:

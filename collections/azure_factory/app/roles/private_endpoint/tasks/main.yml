@@ -1,6 +1,6 @@
 ---
 # Private Endpoint Role - Main Tasks
-# This role creates a private endpoint for Azure Web App
+# This role creates a private endpoint for Azure Web App using ONLY Azure CLI commands
 
 - name: Validate required variables
   fail:
@@ -13,49 +13,28 @@
     - subnet_name
     - target_resource_id
 
-- name: Get subnet information
-  azure.azcollection.azure_rm_subnet_info:
-    resource_group: "{{ resource_group_name }}"
-    virtual_network_name: "{{ vnet_name }}"
-    name: "{{ subnet_name }}"
+- name: Get subnet information using Azure CLI
+  command: az network vnet subnet show --resource-group "{{ resource_group_name }}" --vnet-name "{{ vnet_name }}" --name "{{ subnet_name }}"
   register: subnet_info
+  changed_when: false
 
-- name: Check if Private Endpoint already exists
-  azure.azcollection.azure_rm_privateendpoint_info:
-    resource_group: "{{ resource_group_name }}"
-    name: "{{ private_endpoint_name }}"
-  register: pe_info
-  when: check_mode is not defined or not check_mode
+- name: Check if Private Endpoint already exists using Azure CLI
+  command: az network private-endpoint show --resource-group "{{ resource_group_name }}" --name "{{ private_endpoint_name }}"
+  register: pe_check
+  failed_when: false
+  changed_when: false
 
-- name: Create Private Endpoint
-  azure.azcollection.azure_rm_privateendpoint:
-    resource_group: "{{ resource_group_name }}"
-    name: "{{ private_endpoint_name }}"
-    location: "{{ location }}"
-    subnet: "{{ subnet_info.subnets[0].id }}"
-    private_link_connection:
-      name: "{{ private_endpoint_name }}-connection"
-      private_link_resource_id: "{{ target_resource_id }}"
-      group_ids: "{{ private_endpoint_group_ids | default(['sites']) }}"
-    tags: "{{ private_endpoint_tags | default({}) }}"
-    state: present
+- name: Create Private Endpoint using Azure CLI
+  command: az network private-endpoint create --resource-group "{{ resource_group_name }}" --name "{{ private_endpoint_name }}" --vnet-name "{{ vnet_name }}" --subnet "{{ subnet_name }}" --private-connection-resource-id "{{ target_resource_id }}" --group-ids "{{ private_endpoint_group_ids | default('sites') | join(' ') }}" --connection-name "{{ private_endpoint_name }}-connection" --location "{{ location | default('Southeast Asia') }}" --tags "{{ private_endpoint_tags | default('Project={{ project_name }} Environment={{ env_name }} ManagedBy=Ansible') }}"
   register: pe_result
-  when: pe_info is not defined or pe_info.exists == false
+  when: pe_check.rc != 0
+  changed_when: pe_result.rc == 0
 
-- name: Update Private Endpoint if it exists
-  azure.azcollection.azure_rm_privateendpoint:
-    resource_group: "{{ resource_group_name }}"
-    name: "{{ private_endpoint_name }}"
-    location: "{{ location }}"
-    subnet: "{{ subnet_info.subnets[0].id }}"
-    private_link_connection:
-      name: "{{ private_endpoint_name }}-connection"
-      private_link_resource_id: "{{ target_resource_id }}"
-      group_ids: "{{ private_endpoint_group_ids | default(['sites']) }}"
-    tags: "{{ private_endpoint_tags | default({}) }}"
-    state: present
-  register: pe_result
-  when: pe_info is defined and pe_info.exists == true
+- name: Get Private Endpoint details using Azure CLI
+  command: az network private-endpoint show --resource-group "{{ resource_group_name }}" --name "{{ private_endpoint_name }}"
+  register: pe_details
+  changed_when: false
+  when: pe_check.rc == 0 or pe_result is defined
 
 - name: Display Private Endpoint information
   debug:
@@ -65,12 +44,13 @@
       - "VNet: {{ vnet_name }}"
       - "Subnet: {{ subnet_name }}"
       - "Target Resource: {{ target_resource_id }}"
-      - "Private IP: {{ pe_result.private_link_service_connections[0].private_ip_address | default('N/A') }}"
+      - "Status: {{ 'Created' if pe_check.rc != 0 else 'Already exists' }}"
+      - "Private IP: {{ (pe_details.stdout | from_json).networkInterfaces[0].ipConfigurations[0].privateIpAddress | default('N/A') if pe_details is defined and pe_details.stdout != '' else 'N/A' }}"
   when: display_pe_info | default(true)
 
 - name: Set Private Endpoint facts
   set_fact:
-    private_endpoint_id: "{{ pe_result.id }}"
     private_endpoint_resource_group: "{{ resource_group_name }}"
     private_endpoint_name: "{{ private_endpoint_name }}"
-    private_endpoint_ip: "{{ pe_result.private_link_service_connections[0].private_ip_address | default('') }}"
+    private_endpoint_exists: "{{ pe_check.rc == 0 }}"
+    private_endpoint_ip: "{{ (pe_details.stdout | from_json).networkInterfaces[0].ipConfigurations[0].privateIpAddress | default('') if pe_details is defined and pe_details.stdout != '' else '' }}"

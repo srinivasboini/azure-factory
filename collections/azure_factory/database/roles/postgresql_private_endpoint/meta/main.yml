@@ -18,5 +18,4 @@ galaxy_info:
     - networking
     - azure-cli
 
-dependencies:
-  - role: azure_factory.database.postgresql_flexible_server
+dependencies: []

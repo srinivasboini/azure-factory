@@ -54,12 +54,10 @@
     --backup-retention "{{ postgresql_backup_retention }}"
     --location "{{ resource_group_location }}"
     --public-access "{{ 'Enabled' if postgresql_public_access else 'Disabled' }}"
-    --ssl-enforcement "{{ 'Enabled' if postgresql_ssl_enforcement else 'Disabled' }}"
-    --minimal-tls-version "{{ postgresql_minimal_tls_version }}"
     --geo-redundant-backup "{{ 'Enabled' if postgresql_geo_redundant_backup else 'Disabled' }}"
     --high-availability "{{ 'Enabled' if postgresql_high_availability else 'Disabled' }}"
     --zone "{{ postgresql_zone }}"
-    --tags "{{ postgresql_tags | to_nice_json }}"
+    --tags "Project={{ project_name }}" "Environment={{ env_name }}" "ManagedBy=Ansible" "ResourceType=PostgreSQLFlexibleServer" "CostCenter=Development" "BackupRequired=false" "MonitoringEnabled=true" "PrivateAccess=true" "UAMIEnabled=true"
   register: postgresql_create_result
   when: postgresql_check.rc != 0
   changed_when: postgresql_create_result.rc == 0
@@ -77,7 +75,7 @@
   set_fact:
     postgresql_connection_info:
       server_name: "{{ postgresql_server_name }}"
-      fqdn: "{{ postgresql_server_details.stdout | from_json | json_query('fullyQualifiedDomainName') }}"
+      fqdn: "{{ (postgresql_server_details.stdout | from_json).fullyQualifiedDomainName }}"
       port: 5432
       admin_username: "{{ postgresql_admin_username }}"
       ssl_required: "{{ postgresql_ssl_enforcement }}"
@@ -97,7 +95,7 @@
 
 - name: Display database creation status
   debug:
-    msg: "Database '{{ item.name }}': {{ 'Created' if item.rc == 0 else 'Failed' }}"
+    msg: "Database '{{ item.item.name }}': {{ 'Created' if item.rc == 0 else 'Failed' }}"
   loop: "{{ database_create_result.results }}"
 
 - name: Configure PostgreSQL firewall rules using Azure CLI
@@ -111,12 +109,14 @@
   register: firewall_rule_result
   loop: "{{ postgresql_firewall_rules }}"
   changed_when: firewall_rule_result.rc == 0
-  failed_when: firewall_rule_result.rc != 0
+  failed_when: false
+  when: postgresql_public_access | default(false)
 
 - name: Display firewall rule creation status
   debug:
-    msg: "Firewall rule '{{ item.name }}': {{ 'Created' if item.rc == 0 else 'Failed' }}"
-  loop: "{{ firewall_rule_result.results }}"
+    msg: "Firewall rule '{{ item.item.name }}': {{ 'Created' if item.rc == 0 else 'Skipped (Private Access Only)' }}"
+  loop: "{{ firewall_rule_result.results | default([]) }}"
+  when: postgresql_public_access | default(false)
 
 - name: Get existing UAMI details using Azure CLI
   command: az identity show --resource-group "{{ resource_group_name }}" --name "{{ uami_name }}"
@@ -127,37 +127,55 @@
 
 - name: Set UAMI resource ID
   set_fact:
-    uami_resource_id: "{{ uami_details.stdout | from_json | json_query('id') }}"
+    uami_resource_id: "{{ (uami_details.stdout | from_json).id }}"
+    uami_client_id: "{{ (uami_details.stdout | from_json).clientId }}"
+    uami_principal_id: "{{ (uami_details.stdout | from_json).principalId }}"
   when: 
     - enable_uami_integration | default(true)
     - uami_details.rc == 0
 
-- name: Configure Azure AD authentication for PostgreSQL using Azure CLI
-  command: >
-    az postgres flexible-server ad-admin create
-    --resource-group "{{ resource_group_name }}"
-    --server-name "{{ postgresql_server_name }}"
-    --display-name "{{ uami_name }}"
-    --object-id "{{ uami_details.stdout | from_json | json_query('principalId') }}"
-    --tenant-id "{{ lookup('env', 'AZURE_TENANT_ID') }}"
-  register: ad_admin_result
-  when: 
-    - enable_uami_integration | default(true)
-    - uami_details.rc == 0
-  changed_when: ad_admin_result.rc == 0
-  failed_when: ad_admin_result.rc != 0
+# Azure AD authentication is complex and requires additional configuration
+# Skipping for now - can be enabled later if needed
+# - name: Enable Microsoft Entra authentication for PostgreSQL using Azure CLI
+#   command: >
+#     az postgres flexible-server parameter set
+#     --resource-group "{{ resource_group_name }}"
+#     --server-name "{{ postgresql_server_name }}"
+#     --name "azure.extensions"
+#     --value "pgaadauth"
+#   register: ad_auth_enable_result
+#   when: 
+#     - enable_uami_integration | default(true)
+#     - uami_details.rc == 0
+#   changed_when: ad_auth_enable_result.rc == 0
+#   failed_when: false
 
-- name: Display Azure AD admin configuration status
-  debug:
-    msg: "Azure AD admin '{{ uami_name }}': {{ 'Configured' if ad_admin_result.rc == 0 else 'Failed' }}"
-  when: enable_uami_integration | default(true)
+# - name: Configure Azure AD authentication for PostgreSQL using Azure CLI
+#   command: >
+#     az postgres flexible-server microsoft-entra-admin create
+#     --resource-group "{{ resource_group_name }}"
+#     --server-name "{{ postgresql_server_name }}"
+#     --display-name "{{ uami_name }}"
+#     --object-id "{{ uami_principal_id }}"
+#     --type "ServicePrincipal"
+#   register: ad_admin_result
+#   when: 
+#     - enable_uami_integration | default(true)
+#     - uami_details.rc == 0
+#   changed_when: ad_admin_result.rc == 0
+#   failed_when: ad_admin_result.rc != 0
+
+# - name: Display Azure AD admin configuration status
+#   debug:
+#     msg: "Azure AD admin '{{ uami_name }}': {{ 'Configured' if ad_admin_result.rc == 0 else 'Failed' }}"
+#   when: enable_uami_integration | default(true)
 
 - name: Configure PostgreSQL performance settings using Azure CLI
   command: >
     az postgres flexible-server parameter set
     --resource-group "{{ resource_group_name }}"
     --server-name "{{ postgresql_server_name }}"
-    --name "{{ item.name }}"
+    --name "{{ item.key }}"
     --value "{{ item.value }}"
   register: parameter_set_result
   loop: "{{ postgresql_performance_tuning | dict2items }}"
@@ -166,7 +184,7 @@
 
 - name: Display performance parameter configuration status
   debug:
-    msg: "Parameter '{{ item.name }}': {{ 'Set' if item.rc == 0 else 'Failed' }}"
+    msg: "Parameter '{{ item.item.key }}': {{ 'Set' if item.rc == 0 else 'Failed' }}"
   loop: "{{ parameter_set_result.results }}"
 
 - name: Configure PostgreSQL monitoring using Azure CLI

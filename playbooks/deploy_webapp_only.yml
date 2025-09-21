@@ -45,9 +45,11 @@
         msg: "App Service Plan '{{ app_service_plan_name }}' not found. Please run infrastructure deployment first: ansible-playbook -i inventories/dev playbooks/deploy_infrastructure.yml"
       when: asp_check.rc != 0
   
-  roles:
+  tasks:
     # Step 1: Azure Authentication
-    - role: azure_auth
+    - name: Azure Authentication
+      include_role:
+        name: azure_auth
       vars:
         project_name: "{{ project_name }}"
         environment: "{{ env_name }}"
@@ -57,20 +59,33 @@
         validate_auth: true
     
     # Step 2: Create Web App
-    - role: webapp
+    - name: Create Web App
+      include_role:
+        name: webapp
       vars:
         display_webapp_info: true
     
     # Step 3: Create Private DNS Zone (if private endpoint is enabled)
-    - role: private_dns_zone
+    - name: Create Private DNS Zone
+      include_role:
+        name: private_dns_zone
       vars:
         display_dns_info: true
       when: enable_private_endpoint | default(false)
     
     # Step 4: Create Private Endpoint (if enabled)
-    - role: private_endpoint
+    - name: Set target resource ID for private endpoint
+      set_fact:
+        target_resource_id: "{{ webapp_id }}"
+      when: enable_private_endpoint | default(false)
+    
+    - name: Create Private Endpoint
+      include_role:
+        name: private_endpoint
       vars:
         display_pe_info: true
+        subnet_name: "appservice-private"
+        target_resource_id: "{{ webapp_id if webapp_id != '' else '/subscriptions/' + azure_subscription_id + '/resourceGroups/' + resource_group_name + '/providers/Microsoft.Web/sites/' + webapp_name }}"
       when: enable_private_endpoint | default(false)
     
     # Step 5: Configure Custom Domain (if enabled) - SKIPPED

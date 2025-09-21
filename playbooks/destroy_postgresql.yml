@@ -8,9 +8,19 @@
   connection: local
   gather_facts: false
   
-  vars: {}
-  
   pre_tasks:
+    - name: Load PostgreSQL vault variables
+      include_vars:
+        file: "{{ playbook_dir }}/../inventories/dev/group_vars/vault_postgresql.yml"
+    
+    - name: Load PostgreSQL variables
+      include_vars:
+        file: "{{ playbook_dir }}/../inventories/dev/group_vars/postgresql.yml"
+    
+    - name: Set PostgreSQL admin password from vault
+      set_fact:
+        postgresql_admin_password: "{{ vault_postgresql_password }}"
+    
     - name: Display PostgreSQL destruction information
       debug:
         msg:
@@ -50,6 +60,8 @@
       command: az network private-endpoint delete --resource-group "{{ resource_group_name }}" --name "{{ private_endpoint_name }}"
       when: private_endpoint_check.rc == 0
       register: private_endpoint_delete_result
+      failed_when: false
+      changed_when: private_endpoint_delete_result.rc == 0
     
     - name: Display Private Endpoint deletion status
       debug:
@@ -66,6 +78,8 @@
       command: az network private-dns zone delete --resource-group "{{ resource_group_name }}" --name "{{ private_dns_zone_name }}"
       when: dns_zone_check.rc == 0
       register: dns_zone_delete_result
+      failed_when: false
+      changed_when: dns_zone_delete_result.rc == 0
     
     - name: Display Private DNS Zone deletion status
       debug:
@@ -82,6 +96,8 @@
       command: az postgres flexible-server delete --resource-group "{{ resource_group_name }}" --name "{{ postgresql_server_name }}" --yes
       when: postgresql_check.rc == 0
       register: postgresql_delete_result
+      failed_when: false
+      changed_when: postgresql_delete_result.rc == 0
     
     - name: Display PostgreSQL server deletion status
       debug:

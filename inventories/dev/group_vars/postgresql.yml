@@ -31,11 +31,11 @@ delegated_subnet_prefix: "10.0.1.0/24"
 non_delegated_subnet_prefix: "10.0.2.0/24"
 
 # PostgreSQL Flexible Server Configuration
-postgresql_server_name: "{{ project_name }}-{{ env_name }}-postgres"
+postgresql_server_name: "{{ project_name }}-{{ env_name }}-postgres-sb"
 postgresql_admin_username: "postgresadmin"
 postgresql_admin_password: "{{ vault_postgresql_password }}"  # Use Ansible Vault
 postgresql_version: "15"  # Supported versions: 13, 14, 15, 16
-postgresql_sku_name: "B_Standard_B1ms"  # Minimal pricing tier for development
+postgresql_sku_name: "standard_b1ms"  # Minimal pricing tier for development
 postgresql_tier: "Burstable"  # Burstable, GeneralPurpose, MemoryOptimized
 postgresql_storage_size: 32  # Minimum storage size in GB
 postgresql_backup_retention: 7  # Backup retention in days

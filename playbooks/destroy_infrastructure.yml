@@ -50,6 +50,8 @@
       command: az appservice plan delete --resource-group "{{ resource_group_name }}" --name "{{ app_service_plan_name }}" --yes
       when: asp_check.rc == 0
       register: asp_delete_result
+      failed_when: false
+      changed_when: asp_delete_result.rc == 0
     
     - name: Display App Service Plan deletion status
       debug:
@@ -66,6 +68,8 @@
       command: az network vnet delete --resource-group "{{ resource_group_name }}" --name "{{ vnet_name }}"
       when: vnet_check.rc == 0
       register: vnet_delete_result
+      failed_when: false
+      changed_when: vnet_delete_result.rc == 0
     
     - name: Display VNet deletion status
       debug:
@@ -82,6 +86,8 @@
       command: az network nsg delete --resource-group "{{ resource_group_name }}" --name "{{ nsg_name }}"
       when: nsg_check.rc == 0
       register: nsg_delete_result
+      failed_when: false
+      changed_when: nsg_delete_result.rc == 0
     
     - name: Display NSG deletion status
       debug:
@@ -98,6 +104,8 @@
       command: az group delete --name "{{ resource_group_name }}" --yes --no-wait
       when: rg_check.rc == 0
       register: rg_delete_result
+      failed_when: false
+      changed_when: rg_delete_result.rc == 0
     
     - name: Display Resource Group deletion status
       debug:
